@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ story.title }} - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <script src="https://code.responsivevoice.org/responsivevoice.js?key=2I7bdDJ7"></script>
+    <style>
+        body, html {
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            padding: 10px;
+            flex: 0 0 auto;
+        }
+        .content {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 10px;
+            overflow: hidden;
+        }
+        #story-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .story-page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        .story-image-container {
+            height: 60%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .story-image {
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        .story-text {
+            font-size: 1.2rem;
+            text-align: center;
+            margin: 10px 0;
+            max-height: 20%;
+            overflow-y: auto;
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            flex: 0 0 auto;
+        }
+        .footer {
+            padding: 5px;
+            flex: 0 0 auto;
+        }
+        .title {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+        .button {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <audio id="storyStart" src="{{ url_for('static', filename='sounds/story_start.wav') }}"></audio>
+    <audio id="storyEnd" src="{{ url_for('static', filename='sounds/story_end.wav') }}"></audio>
+    <audio id="switchPage" src="{{ url_for('static', filename='sounds/switch_page.wav') }}"></audio>
+
+    <div class="header">
+        <h1 class="title">{{ story.title }}</h1>
+        <button onclick="playAndNavigate('back', '{{ url_for('story.stories') }}')" class="button back-btn">Back to Stories</button>
+    </div>
+    <div class="content">
+        <div id="story-container">
+            {% for page in story.pages %}
+            <div class="story-page" id="page-{{ loop.index0 }}" style="display: {% if loop.index0 == 0 %}flex{% else %}none{% endif %};">
+                <div class="story-image-container">
+                    <img src="{{ url_for('static', filename='images/' + page.image_filename) }}" alt="Page {{ loop.index }} image" class="story-image">
+                </div>
+                <p class="story-text">{{ page.line_of_page }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="button-container">
+            <button id="start-btn" class="button" onclick="startReading()">Start Reading</button>
+            <button id="pause-btn" class="button" onclick="pauseReading()" style="display: none;">Pause</button>
+            <button id="resume-btn" class="button" onclick="resumeReading()" style="display: none;">Resume</button>
+            <form action="{{ url_for('story.complete_story', story_id=story.id) }}" method="POST" style="display: inline;">
+                <button type="submit" class="button">Mark as Completed</button>
+            </form>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <script>
+        let currentPage = 0;
+        const totalPages = {{ story.pages|length }};
+        let isReading = false;
+        let speechSynth = window.speechSynthesis;
+        let selectedVoice = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait for voices to be loaded
+            speechSynthesis.onvoiceschanged = function() {
+                let voices = speechSynthesis.getVoices();
+                // Select a high-quality female voice (you may need to adjust this based on available voices)
+                selectedVoice = voices.find(voice => voice.name.includes('Female') && voice.lang.startsWith('en')) || voices[0];
+                console.log('Selected voice:', selectedVoice.name);
+            };
+        });
+
+        function startReading() {
+            isReading = true;
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+            
+            const storyStartAudio = document.getElementById('storyStart');
+            storyStartAudio.play();
+            storyStartAudio.onended = function() {
+                readCurrentPage();
+            };
+        }
+
+        function pauseReading() {
+            isReading = false;
+            speechSynth.pause();
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('resume-btn').style.display = 'inline-block';
+        }
+
+        function resumeReading() {
+            isReading = true;
+            speechSynth.resume();
+            document.getElementById('resume-btn').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+        }
+
+        function showPage(index) {
+            document.querySelectorAll('.story-page').forEach(p => p.style.display = 'none');
+            document.getElementById(`page-${index}`).style.display = 'flex';
+            playSwitchPage();
+        }
+
+        function readCurrentPage() {
+            if (!isReading) return;
+
+            console.log(`Reading page ${currentPage + 1} of ${totalPages}`);
+
+            const currentPageElement = document.getElementById(`page-${currentPage}`);
+            const text = currentPageElement.querySelector('.story-text').textContent;
+
+            console.log(`Text to read: "${text}"`);
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = selectedVoice;
+            utterance.rate = 0.9; // Slightly slower rate for clarity
+            utterance.pitch = 1.1; // Slightly higher pitch for a more engaging voice
+
+            utterance.onstart = () => {
+                console.log(`Started reading page ${currentPage + 1}`);
+            };
+
+            utterance.onend = () => {
+                console.log(`Finished reading page ${currentPage + 1}`);
+                if (currentPage < totalPages - 1) {
+                    currentPage++;
+                    showPage(currentPage);
+                    setTimeout(() => readCurrentPage(), 500);
+                } else {
+                    isReading = false;
+                    document.getElementById('pause-btn').style.display = 'none';
+                    document.getElementById('start-btn').style.display = 'inline-block';
+                    document.getElementById('start-btn').textContent = 'Read Again';
+                    playStoryEnd();
+                }
+            };
+
+            utterance.onerror = (event) => {
+                console.error(`Error reading page ${currentPage + 1}:`, event.error);
+            };
+
+            speechSynth.speak(utterance);
+        }
+
+        function playAndNavigate(soundId, url) {
+            playSound(soundId).then(() => {
+                window.location.href = url;
+            });
+        }
+    </script>
+</body>
+</html>

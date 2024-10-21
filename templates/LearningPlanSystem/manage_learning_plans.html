@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Learning Plans - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        .header, .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .header {
+            top: 0;
+        }
+        .footer {
+            bottom: 0;
+        }
+        .content {
+            margin-top: 80px; /* Adjust based on your header height */
+            margin-bottom: 60px; /* Adjust based on your footer height */
+            overflow-y: auto;
+            height: calc(100vh - 140px); /* Adjust based on header and footer heights */
+            background-image: url("/static/background_pictures/teacher_page.jpg");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Manage Learning Plans</h1>
+        <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
+    </div>
+
+    <div class="content">
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search students...">
+        </div>
+        <table id="learning-plans-table">
+            <thead>
+                <tr>
+                    <th data-sort="name">Student Name</th>
+                    <th data-sort="plan">Learning Plan</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td>{{ student.firstname }} {{ student.lastname }}</td>
+                    <td>{% if student.learning_plan %}Yes{% else %}No{% endif %}</td>
+                    <td>
+                        {% if student.learning_plan %}
+                        <button onclick="playAndNavigate('click', '{{ url_for('learning_plan.view_learning_plan', child_id=student.id) }}')" class="btn">View</button>
+                        <button onclick="playAndNavigate('click', '{{ url_for('learning_plan.update_learning_plan', child_id=student.id) }}')" class="btn">Update</button>
+                        {% else %}
+                        <button onclick="playAndNavigate('click', '{{ url_for('learning_plan.create_learning_plan', child_id=student.id) }}')" class="btn">Create</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button class="back-btn" onclick="playAndNavigate('back', '{{ url_for('user.teacher_home') }}')">Back to Home</button>
+    </div>
+
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let teacherMusicSource = null;
+        let teacherMusicGainNode = null;
+
+        function playTeacherMusic() {
+            if (teacherMusicSource) {
+                teacherMusicSource.stop();
+            }
+            teacherMusicSource = audioManager.context.createBufferSource();
+            teacherMusicSource.buffer = audioManager.sounds['teacherMusic'];
+            teacherMusicGainNode = audioManager.context.createGain();
+            teacherMusicSource.connect(teacherMusicGainNode);
+            teacherMusicGainNode.connect(audioManager.masterGainNode);
+            teacherMusicSource.loop = true;
+            teacherMusicSource.start(0);
+        }
+
+        function fadeOutTeacherMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (teacherMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    teacherMusicGainNode.gain.setValueAtTime(teacherMusicGainNode.gain.value, currentTime);
+                    teacherMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutTeacherMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function confirmLogout() {
+            fadeOutTeacherMusic().then(() => {
+                playSound('click').then(() => {
+                    const logout = confirm("Are you sure you want to log out?");
+                    if (logout) {
+                        playSound('bye').then(() => {
+                            window.location.href = "{{ url_for('user.logout') }}";
+                        });
+                    } else {
+                        playTeacherMusic();
+                    }
+                });
+            });
+        }
+
+        function initializeManageLearningPlansPage() {
+            playTeacherMusic();
+
+            const searchInput = document.getElementById('search-input');
+            const table = document.getElementById('learning-plans-table');
+            const rows = table.getElementsByTagName('tr');
+            const headers = table.querySelectorAll('th[data-sort]');
+
+            // Search functionality
+            searchInput.addEventListener('keyup', function() {
+                playLetterTyped();
+                const searchTerm = this.value.toLowerCase();
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(searchTerm) ? '' : 'none';
+                }
+            });
+
+            // Sorting functionality
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    playSound('click');
+                    const column = this.dataset.sort;
+                    const isAscending = this.classList.contains('asc');
+                    
+                    sortTable(column, !isAscending);
+                    
+                    headers.forEach(h => h.classList.remove('asc', 'desc'));
+                    this.classList.add(isAscending ? 'desc' : 'asc');
+                });
+            });
+
+            function sortTable(column, asc) {
+                const tbody = table.querySelector('tbody');
+                const rowsArray = Array.from(tbody.querySelectorAll('tr'));
+                const columnIndex = Array.from(headers).findIndex(h => h.dataset.sort === column);
+
+                rowsArray.sort((a, b) => {
+                    const aValue = a.cells[columnIndex].textContent.trim();
+                    const bValue = b.cells[columnIndex].textContent.trim();
+                    return asc ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+                });
+
+                rowsArray.forEach(row => tbody.appendChild(row));
+            }
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager.soundsLoaded) {
+                initializeManageLearningPlansPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeManageLearningPlansPage);
+            }
+        });
+    </script>
+</body>
+</html>

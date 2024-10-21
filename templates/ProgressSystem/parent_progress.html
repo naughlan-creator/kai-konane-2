@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Child Progress - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        .header, .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .header {
+            top: 0;
+        }
+        .footer {
+            bottom: 0;
+        }
+        .content {
+            background-image: url('/static/background_pictures/parent_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+            margin-top: 80px; /* Adjust based on your header height */
+            margin-bottom: 60px; /* Adjust based on your footer height */
+            overflow-y: auto;
+            height: calc(100vh - 140px); /* Adjust based on header and footer heights */
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Child Progress</h1>
+        <button onclick="playAndNavigate('back', '{{ url_for('user.parent_home') }}')" class="button">Home</button>
+    </div>
+
+    <div class="content">
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search children or content...">
+        </div>
+        <table id="progress-table">
+            <thead>
+                <tr>
+                    <th data-sort="child">Child</th>
+                    <th data-sort="content">Learning Content</th>
+                    <th data-sort="type">Type</th>
+                    <th data-sort="rate">Completion Rate</th>
+                    <th data-sort="completed">Completed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for child in children %}
+                    {% for progress in progress_data[child.id] %}
+                        <tr>
+                            <td>{{ child.firstname }} {{ child.lastname }}</td>
+                            <td>{{ progress.learning_content.title }}</td>
+                            <td>{{ progress.completion_rate }}%</td>
+                            <td>{{ progress.learning_content.type.value}}</td>
+                            <td>{{ "Yes" if progress.completion_rate == 100 else "No" }}</td>
+                        </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let parentMusicSource = null;
+        let parentMusicGainNode = null;
+
+        function playParentMusic() {
+            if (parentMusicSource) {
+                parentMusicSource.stop();
+            }
+            parentMusicSource = audioManager.context.createBufferSource();
+            parentMusicSource.buffer = audioManager.sounds['progress'];
+            parentMusicGainNode = audioManager.context.createGain();
+            parentMusicSource.connect(parentMusicGainNode);
+            parentMusicGainNode.connect(audioManager.masterGainNode);
+            parentMusicSource.loop = true;
+            parentMusicSource.start(0);
+        }
+
+        function fadeOutParentMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (parentMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    parentMusicGainNode.gain.setValueAtTime(parentMusicGainNode.gain.value, currentTime);
+                    parentMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutParentMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function initializeChildProgressPage() {
+            playParentMusic();
+
+            const searchInput = document.getElementById('search-input');
+            const table = document.getElementById('progress-table');
+            const rows = table.getElementsByTagName('tr');
+            const headers = table.querySelectorAll('th[data-sort]');
+
+            // Search functionality
+            searchInput.addEventListener('keyup', function() {
+                playLetterTyped();
+                const searchTerm = this.value.toLowerCase();
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(searchTerm) ? '' : 'none';
+                }
+            });
+
+            // Sorting functionality
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    playSound('click');
+                    const column = this.dataset.sort;
+                    const isAscending = this.classList.contains('asc');
+                    
+                    sortTable(column, !isAscending);
+                    
+                    headers.forEach(h => h.classList.remove('asc', 'desc'));
+                    this.classList.add(isAscending ? 'desc' : 'asc');
+                });
+            });
+
+            function sortTable(column, asc) {
+                const tbody = table.querySelector('tbody');
+                const rowsArray = Array.from(tbody.querySelectorAll('tr'));
+                const columnIndex = Array.from(headers).findIndex(h => h.dataset.sort === column);
+
+                rowsArray.sort((a, b) => {
+                    const aValue = a.cells[columnIndex].textContent.trim();
+                    const bValue = b.cells[columnIndex].textContent.trim();
+                    return asc ? aValue.localeCompare(bValue, undefined, {numeric: true, sensitivity: 'base'}) 
+                               : bValue.localeCompare(aValue, undefined, {numeric: true, sensitivity: 'base'});
+                });
+
+                rowsArray.forEach(row => tbody.appendChild(row));
+            }
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+
+            // Add hover sound effect to table rows
+            const tableRows = document.querySelectorAll('tr');
+            tableRows.forEach(row => {
+                row.addEventListener('mouseenter', () => playSound('optionSelected'));
+            });
+        }
+
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager.soundsLoaded) {
+                initializeChildProgressPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeChildProgressPage);
+            }
+        });
+    </script>
+</body>
+</html>

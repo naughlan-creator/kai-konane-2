@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View User Data - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .content {
+            background-image: url('/static/background_pictures/admin_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            box-sizing: border-box;
+            flex: 1;
+            overflow-y: auto;
+            padding: 120px 30px 100px; /* Adjust top and bottom padding to account for header and footer */
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+        .search-container {
+            position: sticky;
+            top: 5px; /* Adjust based on your header height */
+            background-color: var(--background-color);
+            padding: 10px 0;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">User Data</h1>
+        <button id="backButton" class="logout-btn">Back to Admin Home</button>
+    </div>
+
+    <div class="content">
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search users...">
+        </div>
+        <table id="user-table">
+            <thead>
+                <tr>
+                    <th data-sort="id">ID</th>
+                    <th data-sort="username">Username</th>
+                    <th data-sort="email">Email</th>
+                    <th data-sort="role">Role</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.role.value }}</td>
+                    <td>
+                        <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="button edit-button" style="background-color: darkorchid">Edit</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let adminMusicSource = null;
+        let adminMusicGainNode = null;
+    
+        function playAdminMusic() {
+            if (adminMusicSource) {
+                adminMusicSource.stop();
+            }
+            adminMusicSource = audioManager.context.createBufferSource();
+            adminMusicSource.buffer = audioManager.sounds['adminMusic'];
+            adminMusicGainNode = audioManager.context.createGain();
+            adminMusicSource.connect(adminMusicGainNode);
+            adminMusicGainNode.connect(audioManager.masterGainNode);
+            adminMusicSource.loop = true;
+            adminMusicSource.start(0);
+        }
+    
+        function fadeOutAdminMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (adminMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    adminMusicGainNode.gain.setValueAtTime(adminMusicGainNode.gain.value, currentTime);
+                    adminMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+    
+        function playAndNavigate(soundId, url) {
+            fadeOutAdminMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+    
+        function initializeViewUserDataPage() {
+            const searchInput = document.getElementById('search-input');
+            const table = document.getElementById('user-table');
+            const rows = table.getElementsByTagName('tr');
+            const headers = table.querySelectorAll('th[data-sort]');
+            const backButton = document.getElementById('backButton');
+            const editButtons = document.querySelectorAll('.edit-button');
+    
+            playAdminMusic();
+    
+            // Back button functionality
+            backButton.addEventListener('click', function() {
+                playAndNavigate('back', "{{ url_for('admin.admin_home') }}");
+            });
+    
+            // Search functionality
+            searchInput.addEventListener('keyup', function() {
+                playLetterTyped();
+                const searchTerm = this.value.toLowerCase();
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(searchTerm) ? '' : 'none';
+                }
+            });
+    
+            // Sorting functionality
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    playSound('click');
+                    const column = this.dataset.sort;
+                    const isAscending = this.classList.contains('asc');
+                    
+                    sortTable(column, !isAscending);
+                    
+                    headers.forEach(h => h.classList.remove('asc', 'desc'));
+                    this.classList.add(isAscending ? 'desc' : 'asc');
+                });
+            });
+    
+            // Edit button sound
+            editButtons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    playSound('click').then(() => {
+                        window.location.href = this.href;
+                    });
+                });
+            });
+    
+            function sortTable(column, asc) {
+                const tbody = table.querySelector('tbody');
+                const rowsArray = Array.from(tbody.querySelectorAll('tr'));
+                const columnIndex = Array.from(headers).findIndex(h => h.dataset.sort === column);
+    
+                rowsArray.sort((a, b) => {
+                    const aValue = a.cells[columnIndex].textContent.trim();
+                    const bValue = b.cells[columnIndex].textContent.trim();
+                    return asc ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+                });
+    
+                rowsArray.forEach(row => tbody.appendChild(row));
+            }
+    
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+    
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager && window.audioManager.soundsLoaded) {
+                initializeViewUserDataPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeViewUserDataPage);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activities - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+
+<body>
+    <div id="notification-container" class="notification-container" style="display: none;">
+        <div class="notification-content">
+            <p id="notification-message"></p>
+            <button onclick="closeNotificationWithSound()">OK</button>
+        </div>
+    </div>    
+
+    <div class="header">
+        <h1 class="title">Activities</h1>
+        <button onclick="fadeOutMusicAndNavigate('back', '{{ url_for('learning_content.learning_content') }}')"
+            class="logout-btn">Back to Learning Content</button>
+    </div>
+    <div class="content">
+        <h2>Your Recommended Level: {{ recommended_level.name }}</h2>
+        <div class="activity-list">
+            {% if activities %}
+                {% set current_level = namespace(value=None) %}
+                {% for activity in activities %}
+                    {% if activity.level != current_level.value %}
+                        {% if current_level.value %}
+                            </div>  <!-- Close previous level div -->
+                        {% endif %}
+                        {% set current_level.value = activity.level %}
+                        <h3>{{ current_level.value.name }} Level Activities</h3>
+                        <div class="level-group">
+                    {% endif %}
+                    <div class="activity-item" data-stem-code="{{ activity.stem_code.name }}">
+                        {% if activity.cover_image %}
+                        <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" alt="{{ activity.title }}"
+                            class="activity-cover">
+                        {% else %}
+                        <div class="activity-cover placeholder">No Cover Image</div>
+                        {% endif %}
+                        <h4>{{ activity.title }}</h4>
+                        <div class="stem-code">{{ activity.stem_code.name }}</div>
+                        {% if activity.is_completed %}
+                        <div class="completion-text">Completed</div>
+                        {% else %}
+                        <div class="progress-circle" style="--progress: {{ activity.progress_value }}deg;">
+                            <span class="progress-text">{{ "%.0f"|format(activity.progress_value) }}%</span>
+                        </div>
+                        {% endif %}
+                        <button
+                            onclick="fadeOutMusicAndNavigate('click', '{{ url_for('activity.start_activity', activity_id=activity.id) }}')"
+                            class="button">
+                            {% if activity.is_completed %}Retry Activity{% else %}Start Activity{% endif %}
+                        </button>
+                    </div>
+                {% endfor %}
+                {% if current_level.value %}
+                    </div>  <!-- Close last level div -->
+                {% endif %}
+            {% else %}
+                <p>No activities available at your current level. Please check back later or contact your teacher.</p>
+            {% endif %}
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <script>
+        let backgroundMusic;
+        let gainNode;
+
+        function playLoopingActivityMusic() {
+            audioManager.initializeContext();
+            backgroundMusic = audioManager.context.createBufferSource();
+            backgroundMusic.buffer = audioManager.sounds['activityMusic'];
+            backgroundMusic.loop = true;
+
+            gainNode = audioManager.context.createGain();
+            backgroundMusic.connect(gainNode);
+            gainNode.connect(audioManager.context.destination);
+
+            backgroundMusic.start(0);
+        }
+
+        function fadeOutMusic(duration = 1000) {
+            if (gainNode) {
+                gainNode.gain.setValueAtTime(gainNode.gain.value, audioManager.context.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioManager.context.currentTime + duration / 1000);
+
+                setTimeout(() => {
+                    if (backgroundMusic) {
+                        backgroundMusic.stop();
+                        backgroundMusic = null;
+                    }
+                }, duration);
+            }
+        }
+
+        function fadeOutMusicAndNavigate(soundId, url) {
+            fadeOutMusic();
+            setTimeout(() => {
+                playAndNavigate(soundId, url);
+            }, 1000); // Wait for 1 second before navigating
+        }
+
+        function showNotification(message) {
+            document.getElementById('notification-message').textContent = message;
+            document.getElementById('notification-container').style.display = 'flex';
+            playSound('error');
+        }
+        
+        function closeNotificationWithSound() {
+            playSound('click').then(() => {
+                document.getElementById('notification-container').style.display = 'none';
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // First, ensure all sounds are loaded
+            const soundsToLoad = [
+                { id: 'activityMusic', url: '/static/sounds/activity_music.wav' },
+                { id: 'back', url: '/static/sounds/back.wav' },
+                { id: 'click', url: '/static/sounds/click.wav' },
+                { id: 'error', url: '/static/sounds/error.wav' }
+            ];
+
+            Promise.all(soundsToLoad.map(sound => audioManager.loadSound(sound.id, sound.url)))
+            .then(() => {
+                console.log('All sounds loaded successfully');
+                // Play the activity music
+                playLoopingActivityMusic();
+            })
+            .catch(error => console.error('Error loading sounds:', error));
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        showNotification("{{ message }}");
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if notification %}
+                showNotification("{{ notification }}");
+            {% endif %}
+        });
+    </script>
+</body>
+</html>

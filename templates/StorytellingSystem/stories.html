@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stories - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+
+<body>
+    <div class="header">
+        <h1 class="title">Stories</h1>
+        <button onclick="playAndNavigate('{{ url_for('learning_content.learning_content') }}')" class="button back-btn">Back to Learning Content</button>
+    </div>
+    <div class="content">
+        <div class="story-list">
+            {% for story in stories %}
+            <div class="story-item">
+                {% if story.cover_page %}
+                <img src="{{ url_for('static', filename='images/' + story.cover_page) }}" alt="{{ story.title }}" class="story-cover">
+                {% else %}
+                <div class="story-cover placeholder">No Cover Image</div>
+                {% endif %}
+                <h2>{{ story.title }}</h2>
+                {% if story.is_completed %}
+                <div class="completion-text">Completed</div>
+                {% else %}
+                <div class="progress-circle" style="--progress: {{ story.progress_value }}deg;">
+                    <span class="progress-text">{{ story.progress_value }}%</span>
+                </div>
+                {% endif %}
+                <button onclick="playAndNavigate('{{ url_for('story.story_detail', story_id=story.id) }}')" class="button">
+                    {% if story.is_completed %}Read Story Again{% else %}Read Story{% endif %}
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let activityMusicSource = null;
+        let activityMusicGainNode = null;
+
+        function playActivityMusic() {
+            if (activityMusicSource) {
+                activityMusicSource.stop();
+            }
+            activityMusicSource = audioManager.context.createBufferSource();
+            activityMusicSource.buffer = audioManager.sounds['activityMusic'];
+            activityMusicGainNode = audioManager.context.createGain();
+            activityMusicSource.connect(activityMusicGainNode);
+            activityMusicGainNode.connect(audioManager.masterGainNode);
+            activityMusicSource.loop = true;
+            activityMusicSource.start(0);
+        }
+
+        function fadeOutActivityMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (activityMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    activityMusicGainNode.gain.setValueAtTime(activityMusicGainNode.gain.value, currentTime);
+                    activityMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(url) {
+            fadeOutActivityMusic().then(() => {
+                playSound('switchPage').then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function initializeStoriesPage() {
+            playActivityMusic();
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializeStoriesPage);
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializeStoriesPage();
+        }
+
+        // Play option selected sound when hovering over story items
+        const storyItems = document.querySelectorAll('.story-item');
+        storyItems.forEach(item => {
+            item.addEventListener('mouseenter', () => playSound('optionSelected'));
+        });
+    </script>
+</body>
+
+</html>

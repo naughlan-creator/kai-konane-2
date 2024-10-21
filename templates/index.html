@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Welcome page DOM content loaded');
+            const signupButton = document.getElementById('signupButton');
+            const loginButton = document.getElementById('loginButton');
+
+            signupButton.addEventListener('click', function() {
+                console.log('Signup button clicked');
+                playSound('click').then(() => {
+                    window.location.href = '{{ url_for('user.signup') }}';
+                });
+            });
+
+            loginButton.addEventListener('click', function() {
+                console.log('Login button clicked');
+                playSound('click').then(() => {
+                    window.location.href = '{{ url_for('user.login') }}';
+                });
+            });
+        });
+    </script>
+</head>
+<body>
+
+    <style>
+
+        .content {
+            background-image: url('/static/background_pictures/index_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        h1 {
+            color: white;
+        }
+
+        .button {
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0svi;
+        }
+        
+    </style>
+
+    <div class="header"></div>
+    <div class="content">
+        <h1>Welcome to Kai Konane</h1>
+        <div class="button-container">
+            <button id="signupButton" class="button">Sign up</button>
+            <button id="loginButton" class="login-btn">Log in</button>
+        </div>
+    </div>
+    <div class="footer"></div>
+</body>
+</html>

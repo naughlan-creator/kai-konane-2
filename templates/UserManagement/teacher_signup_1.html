@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Signup - Step 1</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>Hello Teacher</h1>
+        <form action="{{ url_for('user.teacher_signup_1') }}" method="post" onsubmit="return validateFormWithSound(event)">
+            <label for="preschool_id">Select Preschool</label>
+            <select name="preschool_id" id="preschool_id" required>
+                <option value="">Choose a Preschool</option>
+                {% for preschool in preschools %}
+                <option value="{{ preschool.id }}">{{ preschool.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="spacer"></div>
+            <div class="button-container">
+                <button type="button" class="button" onclick="confirmCancel()">Back</button>
+                <button type="submit" class="button">Next</button>
+            </div>
+        </form>
+    </div>
+    <script>
+        function confirmCancel() {
+            playSound('back').then(() => {
+                if (confirm("Do you want to cancel the registration process?")) {
+                    playAndNavigate('bye', "{{ url_for('index') }}");
+                }
+            });
+        }
+        
+        function validateFormWithSound(event) {
+            event.preventDefault();
+            const preschool = document.getElementById("preschool_id").value;
+            if (preschool === "") {
+                playIncorrectAnswer().then(() => {
+                    alert("Please select a preschool.");
+                });
+                return false;
+            }
+            playOptionSelected().then(() => {
+                event.target.submit();
+            });
+            return false;
+        }
+
+        // Play sound when an option is selected
+        document.getElementById("preschool_id").addEventListener("change", function() {
+            playOptionSelected();
+        });
+
+    </script>
+    <div class="footer"></div>
+</body>
+</html>

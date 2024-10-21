@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Child Results - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        .header, .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 10px;
+        }
+        .header {
+            top: 0;
+        }
+        .footer {
+            bottom: 0;
+        }
+        .content {
+            background-image: url('/static/background_pictures/parent_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+            margin-top: 100px; /* Adjust based on your header height */
+            margin-bottom: 60px; /* Adjust based on your footer height */
+            overflow-y: auto;
+            height: calc(100vh - 140px); /* Adjust based on header and footer heights */
+            position: relative;
+        }
+        .content::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.8); /* Semi-transparent white overlay */
+            z-index: 1;
+        }
+        .content-inner {
+            position: relative;
+            z-index: 2;
+            color: #333; /* Dark text color */
+        }
+        .graph-container {
+            width: 400px;
+            height: 200px;
+            margin-bottom: 20px;
+            background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .child-name {
+            background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent black background */
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .results-table {
+            background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
+            border-collapse: collapse;
+            width: 100%;
+        }
+        .results-table th, .results-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .results-table th {
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+        }
+        .results-table tr:nth-child(even) {
+            background-color: rgba(240, 240, 240, 0.9);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Child Results</h1>
+        <button onclick="playAndNavigate('back', '{{ url_for('user.parent_home') }}')" class="button">Home</button>
+    </div>
+    <div class="content">
+        <div class="content-inner">
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search activities...">
+            </div>
+            {% for child in children %}
+            <h2 class="child-name" data-child-id="{{ child.id }}">{{ child.firstname }} {{ child.lastname }}</h2>
+            <div id="graph-container-{{ child.id }}" class="graph-container">
+                <canvas id="stem-graph-{{ child.id }}"></canvas>
+            </div>
+            <table id="results-table-{{ child.id }}" class="results-table">
+            <thead>
+                <tr>
+                    <th data-sort="activity">Activity</th>
+                    <th data-sort="score">Score</th>
+                    <th data-sort="stem_code">Stem Code</th>
+                    <th data-sort="date">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in results_data[child.id] %}
+                <tr>
+                    <td>{{ result.activity.title }}</td>
+                    <td>{{ result.score }}%</td>
+                    <td>{{ result.activity.stem_code.value }}</td>
+                    <td>{{ result.date_acquired.strftime('%Y-%m-%d') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
+    </div>
+    <div class="footer"></div>
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+    <script src="{{ url_for('static', filename='js/stem_graph.js') }}"></script>
+    <script>
+        let parentMusicSource = null;
+        let parentMusicGainNode = null;
+
+        function playParentMusic() {
+            if (parentMusicSource) {
+                parentMusicSource.stop();
+            }
+            parentMusicSource = audioManager.context.createBufferSource();
+            parentMusicSource.buffer = audioManager.sounds['results'];
+            parentMusicGainNode = audioManager.context.createGain();
+            parentMusicSource.connect(parentMusicGainNode);
+            parentMusicGainNode.connect(audioManager.masterGainNode);
+            parentMusicSource.loop = true;
+            parentMusicSource.start(0);
+        }
+
+        function fadeOutParentMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (parentMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    parentMusicGainNode.gain.setValueAtTime(parentMusicGainNode.gain.value, currentTime);
+                    parentMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutParentMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function initializeChildResultsPage() {
+            playParentMusic();
+
+            const searchInput = document.getElementById('search-input');
+            const tables = document.querySelectorAll('.results-table');
+
+            // Search functionality
+            searchInput.addEventListener('keyup', function() {
+                playLetterTyped();
+                const searchTerm = this.value.toLowerCase();
+                tables.forEach(table => {
+                    const rows = table.getElementsByTagName('tr');
+                    for (let i = 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        const text = row.textContent.toLowerCase();
+                        row.style.display = text.includes(searchTerm) ? '' : 'none';
+                    }
+                });
+            });
+
+            // Sorting functionality
+            tables.forEach(table => {
+                const headers = table.querySelectorAll('th[data-sort]');
+                headers.forEach(header => {
+                    header.addEventListener('click', function() {
+                        playSound('click');
+                        const column = this.dataset.sort;
+                        const isAscending = this.classList.contains('asc');
+                        
+                        sortTable(table, column, !isAscending);
+                        
+                        headers.forEach(h => h.classList.remove('asc', 'desc'));
+                        this.classList.add(isAscending ? 'desc' : 'asc');
+                    });
+                });
+            });
+
+            function sortTable(table, column, asc) {
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const headers = table.querySelectorAll('th[data-sort]');
+                const columnIndex = Array.from(headers).findIndex(h => h.dataset.sort === column);
+
+                rows.sort((a, b) => {
+                    const aValue = a.cells[columnIndex].textContent.trim();
+                    const bValue = b.cells[columnIndex].textContent.trim();
+                    return asc ? aValue.localeCompare(bValue, undefined, {numeric: true, sensitivity: 'base'}) 
+                               : bValue.localeCompare(aValue, undefined, {numeric: true, sensitivity: 'base'});
+                });
+
+                rows.forEach(row => tbody.appendChild(row));
+            }
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+
+            // Add hover sound effect to table rows
+            const tableRows = document.querySelectorAll('tr');
+            tableRows.forEach(row => {
+                row.addEventListener('mouseenter', () => playSound('optionSelected'));
+            });
+
+            // Initialize STEM graphs
+            const childNames = document.querySelectorAll('.child-name');
+            childNames.forEach(childName => {
+                const childId = childName.dataset.childId;
+                initializeStemGraph(childId);
+            });
+        }
+
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager.soundsLoaded) {
+                initializeChildResultsPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeChildResultsPage);
+            }
+        });
+    </script>
+</body>
+</html>

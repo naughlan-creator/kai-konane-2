@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parent Signup - Step 1</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        .input-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        label {
+            font-size: 1.5rem;
+            color: #4A90E2;
+            display: block;
+            margin-bottom: 15px;
+        }
+        
+        input[type="number"] {
+            padding: 15px;
+            font-size: 1.2rem;
+            border-radius: 15px;
+            border: 2px solid #4A90E2;
+            width: 100%;
+            max-width: 200px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        input[type="number"]:focus {
+            border-color: #FFC107;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+        }
+        
+        .button-container {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>Hello Parent</h1>
+
+        <div id="notification-container" class="notification-container" style="display: none;">
+            <div class="notification-content">
+                <p id="notification-message"></p>
+                <button onclick="closeNotification()">OK</button>
+            </div>
+        </div>        
+
+        <form action="{{ url_for('user.parent_signup_1') }}" method="post" onsubmit="return validateAndSubmit(event)">
+            <div class="input-container">
+                <label for="kids">How many kids are you enrolling?</label>
+                <input type="number" id="kids" name="kids" min="0" required>
+            </div>
+            <div class="button-container">
+                <button type="button" class="button" onclick="confirmCancel()">Back</button>
+                <button type="submit" class="login-btn">OK</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function confirmCancel() {
+            playOptionSelected().then(() => {
+                if (confirm("Do you want to cancel the registration process?")) {
+                    playAndNavigate('back', "{{ url_for('index') }}");
+                }
+            });
+        }
+        
+        function validateAndSubmit(event) {
+            event.preventDefault();
+            const kids = document.getElementById("kids").value;
+            if (kids === "") {
+                playIncorrectAnswer().then(() => {
+                    alert("Please enter the number of kids.");
+                });
+                return false;
+            }
+            playCorrectAnswer().then(() => {
+                event.target.submit();
+            });
+            return false;
+        }
+        
+        function showNotification(message) {
+            document.getElementById('notification-message').textContent = message;
+            document.getElementById('notification-container').style.display = 'flex';
+            playError();
+        }
+        
+        function closeNotification() {
+            playOptionSelected().then(() => {
+                document.getElementById('notification-container').style.display = 'none';
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Play a sound when the page loads
+            playParentPage();
+        
+            // Add event listeners to buttons
+            document.querySelector('button[type="button"]').addEventListener('click', confirmCancel);
+            document.querySelector('button[type="submit"]').addEventListener('click', () => playOptionSelected());
+        
+            // Input field sound effects
+            const kidsInput = document.getElementById('kids');
+            kidsInput.addEventListener('input', () => playLetterTyped());
+            kidsInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' || e.key === 'Delete') {
+                    playLetterDeleted();
+                }
+            });
+        
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        showNotification("{{ message }}");
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        
+            {% if notification %}
+                showNotification("{{ notification }}");
+            {% endif %}
+        });
+    </script>
+    <div class="footer"></div>
+</body>
+</html>

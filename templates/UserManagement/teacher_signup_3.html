@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Signup - Step 3</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>Create your Profile</h1>
+        <form action="{{ url_for('user.teacher_signup_3') }}" method="post" onsubmit="return validateForm()">
+            <label for="firstname">First name</label>
+            <input type="text" id="firstname" name="firstname" required>
+            <div class="spacer"></div>
+            <label for="lastname">Last name</label>
+            <input type="text" id="lastname" name="lastname" required>
+            <div class="spacer"></div>
+            <button type="button" class="button" onclick="goBack()">Back</button>
+            <button type="submit" class="button">OK</button>
+        </form>
+    </div>
+    <div class="footer"></div>
+    <script>
+        function validateForm(event) {
+            event.preventDefault(); // Prevent immediate form submission
+    
+            const firstname = document.getElementById("firstname").value;
+            const lastname = document.getElementById("lastname").value;
+    
+            if (firstname === "" || lastname === "") {
+                playSound('error').then(() => {
+                    alert("Please fill in all fields.");
+                });
+                return false;
+            }
+    
+            // Play the sound and then submit the form
+            playSound('correct').then(() => {
+                event.target.submit();
+            });
+    
+            return false;
+        }
+    
+        function goBack() {
+            playAndNavigate('back', "{{ url_for('user.teacher_signup_2') }}");
+        }
+    
+        document.addEventListener('DOMContentLoaded', function() {
+    
+            const form = document.querySelector('form');
+            form.addEventListener('submit', validateForm);
+    
+            const inputs = document.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                input.addEventListener('input', function(e) {
+                    if (e.inputType === 'deleteContentBackward') {
+                        playLetterDeleted();
+                    } else {
+                        playLetterTyped();
+                    }
+                });
+            });
+    
+            // Add click sound to buttons
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function() {
+                    playSound('click');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

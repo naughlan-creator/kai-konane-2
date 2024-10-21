@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Home - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+
+    <style>
+
+        .content {
+            background-image: url('/static/background_pictures/teacher_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        /* To ensure the content is readable over the background image */
+        table {
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+        }
+        
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        
+    </style>
+
+    <div class="header">
+        <button onclick="playAndNavigate('{{ url_for('profile.profile') }}')" class="login-btn">Profile</button>
+        <h1 class="title">Hello Teacher</h1>
+        <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
+    </div>
+    <div class="content">
+        <div class="button-container">
+            <button data-href="{{ url_for('feedback.feedback_home') }}" class="button" style="background-color: #42A5F5;">Feedback</button>
+            <button data-href="{{ url_for('user.view_learners') }}" class="button" style="background-color: #00897B;">View My Learners</button>
+            <button data-href="{{ url_for('progress.teacher_progress') }}" class="button" style="background-color: #66BB6A;">Check Learner Progress</button>
+            <button data-href="{{ url_for('progress.teacher_results') }}" class="button" style="background-color: #FFA726;">Check Learner Results</button>
+            <button data-href="{{ url_for('learning_plan.manage_learning_plans') }}" class="button" style="background-color: #AB47BC;">Manage Learning Plans</button>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let teacherMusicSource = null;
+        let teacherMusicGainNode = null;
+
+        function confirmLogout() {
+            fadeOutTeacherMusic().then(() => {
+                playSound('click').then(() => {
+                    const logout = confirm("Are you sure you want to log out?");
+                    if (logout) {
+                        playSound('bye').then(() => {
+                            window.location.href = "{{ url_for('user.logout') }}";
+                        });
+                    } else {
+                        fadeInTeacherMusic();
+                    }
+                });
+            });
+        }
+
+        function playAndNavigate(url) {
+            fadeOutTeacherMusic().then(() => {
+                playSound('click').then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function playTeacherMusic() {
+            if (teacherMusicSource) {
+                teacherMusicSource.stop();
+            }
+            teacherMusicSource = audioManager.context.createBufferSource();
+            teacherMusicSource.buffer = audioManager.sounds['teacherMusic'];
+            teacherMusicGainNode = audioManager.context.createGain();
+            teacherMusicSource.connect(teacherMusicGainNode);
+            teacherMusicGainNode.connect(audioManager.masterGainNode);
+            teacherMusicSource.loop = true;
+            teacherMusicSource.start(0);
+        }
+
+        function fadeOutTeacherMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (teacherMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    teacherMusicGainNode.gain.setValueAtTime(teacherMusicGainNode.gain.value, currentTime);
+                    teacherMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function fadeInTeacherMusic(duration = 0.5) {
+            if (teacherMusicGainNode) {
+                const currentTime = audioManager.context.currentTime;
+                teacherMusicGainNode.gain.setValueAtTime(0, currentTime);
+                teacherMusicGainNode.gain.linearRampToValueAtTime(1, currentTime + duration);
+            }
+        }
+
+        function initializeTeacherPage() {
+            const isReturningToTeacherHome = sessionStorage.getItem('returningToTeacherHome');
+            
+            if (isReturningToTeacherHome) {
+                playSound('teacherPage').then(() => {
+                    playTeacherMusic();
+                });
+                sessionStorage.removeItem('returningToTeacherHome');
+            } else {
+                playTeacherMusic();
+            }
+
+            const buttons = document.querySelectorAll('.button-container .button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('data-href');
+                    playAndNavigate(url);
+                });
+            });
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializeTeacherPage);
+
+        // Set flag when navigating away from teacher home
+        window.addEventListener('beforeunload', function() {
+            sessionStorage.setItem('returningToTeacherHome', 'true');
+        });
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializeTeacherPage();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parent Signup - Step 4</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+
+    <style>
+        .input-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        label {
+            font-size: 1.5rem;
+            color: #4A90E2;
+            display: block;
+            margin-bottom: 15px;
+        }
+        
+        input[type="number"] {
+            padding: 15px;
+            font-size: 1.2rem;
+            border-radius: 15px;
+            border: 2px solid #4A90E2;
+            width: 100%;
+            max-width: 200px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        input[type="number"]:focus {
+            border-color: #FFC107;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+        }
+        
+        .button-container {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>Enter children's details</h1>
+
+        <form action="{{ url_for('user.parent_signup_4') }}" method="post" onsubmit="return validateFormWithSound(event)">
+            {% for i in range(1, kids + 1) %}
+                <h2>Child {{ i }}</h2>
+                <label for="child_name_{{ i }}">First Name:</label>
+                <input type="text" id="child_name_{{ i }}" name="child_name_{{ i }}" required><br>
+
+                <label for="child_age_{{ i }}">Age:</label>
+                <input type="number" id="child_age_{{ i }}" name="child_age_{{ i }}" min="1" required><br>
+
+                <label for="child_gender_{{ i }}">Gender:</label>
+                <select id="child_gender_{{ i }}" name="child_gender_{{ i }}" required>
+                    <option value="" disabled selected>Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select><br>
+
+                <label for="child_username_{{ i }}">Username:</label>
+                <input type="text" id="child_username_{{ i }}" name="child_username_{{ i }}" required><br>
+
+                <label for="child_password_{{ i }}">Password:</label>
+                <input type="password" id="child_password_{{ i }}" name="child_password_{{ i }}" required><br>
+
+                <label for="child_race_{{ i }}">Race/Ethnicity:</label>
+                <input type="text" id="child_race_{{ i }}" name="child_race_{{ i }}" required><br>
+
+                <label for="child_lunch_{{ i }}">Lunch Type:</label>
+                <select id="child_lunch_{{ i }}" name="child_lunch_{{ i }}" required>
+                    <option value="" disabled selected>Select Lunch Type</option>
+                    {% for lunch in LunchType %}
+                        <option value="{{ lunch.value }}">{{ lunch.value }}</option>
+                    {% endfor %}
+                </select><br>
+
+                <label for="child_teacher_{{ i }}">Teacher</label>
+                <select id="child_teacher_{{ i }}" name="child_teacher_{{ i }}" required>
+                    <option value="" disabled selected>Select Teacher</option>
+                    {% for teacher in teachers %}
+                        <option value="{{ teacher.id }}">{{ teacher.firstname }} {{ teacher.lastname }}</option>
+                    {% endfor %}
+                </select><br>
+            {% endfor %}
+            <div class="spacer"></div>
+            <button type="button" class="button" onclick="playAndNavigate('back', '{{ url_for('user.parent_signup_3') }}')">Back</button>
+            <button type="submit" class="button">OK</button>
+        </form>
+    </div>
+
+    <script>
+        function validateFormWithSound(event) {
+            event.preventDefault(); // Prevent immediate form submission
+            const kids = {{ kids }};
+            for (let i = 1; i <= kids; i++) {
+                const name = document.getElementById("child_name_" + i).value;
+                const age = document.getElementById("child_age_" + i).value;
+                const gender = document.getElementById("child_gender_" + i).value;
+                const username = document.getElementById("child_username_" + i).value;
+                const password = document.getElementById("child_password_" + i).value;
+                const race = document.getElementById("child_race_" + i).value;
+                const lunchType = document.getElementById("child_lunch_" + i).value;
+                const teacher = document.getElementById("child_teacher_" + i).value;
+                
+                if (name === "" || age === "" || gender === "" || username === "" || password === "" || race === "" || lunchType === "" || teacher === "") {
+                    playIncorrectAnswer().then(() => {
+                        alert("Please fill in all fields for all children.");
+                    });
+                    return false;
+                }
+            }
+            
+            playCorrectAnswer().then(() => {
+                event.target.submit(); // Submit the form after playing the sound
+            });
+            return false;
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            playParentPage(); // Play parent page sound when the page loads
+        
+            // Add event listeners for input fields
+            const inputFields = document.querySelectorAll('input[type="text"], input[type="number"], input[type="password"]');
+            inputFields.forEach(field => {
+                field.addEventListener('input', function(e) {
+                    if (e.inputType === 'deleteContentBackward') {
+                        playLetterDeleted();
+                    } else {
+                        if (this.type === 'password') {
+                            playPasswordTyped();
+                        } else {
+                            playLetterTyped();
+                        }
+                    }
+                });
+            });
+        
+            // Add event listeners for select fields
+            const selectFields = document.querySelectorAll('select');
+            selectFields.forEach(field => {
+                field.addEventListener('change', function() {
+                    playOptionSelected();
+                });
+            });
+        });
+    </script>
+    
+    <div class="footer"></div>
+</body>
+</html>
