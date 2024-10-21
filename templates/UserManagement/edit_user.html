@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit User - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Edit User</h1>
+        <button onclick="location.href='{{ url_for('admin.view_user_data') }}'" class="button">Back to User Data</button>
+    </div>
+    <div class="content">
+        <form method="POST">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" value="{{ user.username }}" required>
+
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" value="{{ user.email }}" required>
+
+            <label for="role">Role:</label>
+            <select id="role" name="role" required>
+                {% for role in roles %}
+                <option value="{{ role.value }}" {% if user.role == role %}selected{% endif %}>{{ role.value }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="password">New Password (leave blank to keep current):</label>
+            <input type="password" id="password" name="password">
+
+            <button type="submit" class="button">Update User</button>
+        </form>
+    </div>
+    <div class="footer"></div>
+</body>
+</html>

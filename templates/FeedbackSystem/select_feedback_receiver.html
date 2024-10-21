@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Feedback Recipient</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Select the Recipient</h1>
+    </div>
+    <div class="content">
+        <div class="search-container">
+            <input type="text" id="search-input" onkeyup="filterTable()" placeholder="Search for names...">
+        </div>
+        <div class="table-container">
+            <table id="feedback-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Surname</th>
+                        <th>Associated Child</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for recipient in recipients %}
+                    <tr>
+                        <td>{{ recipient.firstname }}</td>
+                        <td>{{ recipient.lastname }}</td>
+                        <td>
+                            {% if user_role == 'PARENT' %}
+                                {{ recipient.students[0].firstname if recipient.students else 'N/A' }}
+                            {% elif user_role == 'TEACHER' %}
+                                {{ recipient.children[0].firstname if recipient.children else 'N/A' }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('feedback.write_feedback', recipient_id=recipient.id) }}" class="select-btn" onclick="playAndNavigate('click', this.href); return false;">Select</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ url_for('feedback.feedback_home') }}" class="button close-btn" onclick="playAndNavigate('back', this.href); return false;">Close</a>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let backgroundMusicSource = null;
+        let backgroundMusicGainNode = null;
+
+        function playBackgroundMusic() {
+            if (backgroundMusicSource) {
+                backgroundMusicSource.stop();
+            }
+            backgroundMusicSource = audioManager.context.createBufferSource();
+            backgroundMusicSource.buffer = audioManager.sounds['feedback'];
+            backgroundMusicGainNode = audioManager.context.createGain();
+            backgroundMusicSource.connect(backgroundMusicGainNode);
+            backgroundMusicGainNode.connect(audioManager.masterGainNode);
+            backgroundMusicSource.loop = true;
+            backgroundMusicSource.start(0);
+        }
+
+        function fadeOutBackgroundMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (backgroundMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    backgroundMusicGainNode.gain.setValueAtTime(backgroundMusicGainNode.gain.value, currentTime);
+                    backgroundMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutBackgroundMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function filterTable() {
+            let input = document.getElementById("search-input").value.toUpperCase();
+            let table = document.getElementById("feedback-table");
+            let tr = table.getElementsByTagName("tr");
+            
+            for (let i = 1; i < tr.length; i++) {
+                let tdName = tr[i].getElementsByTagName("td")[0];
+                let tdSurname = tr[i].getElementsByTagName("td")[1];
+                if (tdName || tdSurname) {
+                    let txtValueName = tdName.textContent || tdName.innerText;
+                    let txtValueSurname = tdSurname.textContent || tdSurname.innerText;
+                    if (txtValueName.toUpperCase().indexOf(input) > -1 || txtValueSurname.toUpperCase().indexOf(input) > -1) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
+                }
+            }
+            
+        }
+
+        function initializeSelectRecipientPage() {
+            playBackgroundMusic();
+            initializeVolumeControl();
+
+            // Add typing sound to search input
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('keydown', () => playSound('letter_typed'));
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializeSelectRecipientPage);
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializeSelectRecipientPage();
+        }
+    </script>
+</body>
+</html>

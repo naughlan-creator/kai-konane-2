@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ activity.title }} - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <audio id="correctAnswer" src="{{ url_for('static', filename='sounds/correct.wav') }}"></audio>
+    <audio id="incorrectAnswer" src="{{ url_for('static', filename='sounds/incorrect.wav') }}"></audio>
+    <audio id="activityMusic" src="{{ url_for('static', filename='sounds/activity_music.wav') }}" loop></audio>
+    <audio id="activityStart" src="{{ url_for('static', filename='sounds/activity_start.wav') }}"></audio>
+    <audio id="activityEnd" src="{{ url_for('static', filename='sounds/activity_end.wav') }}"></audio>
+    <audio id="optionSelected" src="{{ url_for('static', filename='sounds/option_selected.wav') }}"></audio>
+
+    <div class="header">
+        <h1 class="title">{{ activity.title }}</h1>
+        <button onclick="location.href='{{ url_for('activity.activity_home') }}'" class="button back-btn">Back to Activities</button>
+    </div>
+    <div class="content">
+        <div id="question-container">
+            {% for question in activity.questions %}
+            <div class="question" id="question-{{ loop.index0 }}" style="display: {% if loop.index0 == 0 %}block{% else %}none{% endif %};">
+                <h2 class="question-text">Question {{ loop.index }}</h2>
+                <p class="question-content">{{ question.content }}</p>
+                <div class="answer-container">
+                    {% for answer in question.answers %}
+                    <button class="answer-button" onclick="selectAnswer(this, {{ question.id }}, {{ answer.id }}, {{ answer.is_correct|tojson }})">
+                        {{ answer.content }}
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        let currentQuestion = 0;
+        const totalQuestions = {{ activity.questions|length }};
+        const answers = {};
+        let activityMusicPlaying = false;
+
+        function startActivityMusic() {
+            if (!activityMusicPlaying) {
+                playActivityMusic();
+                activityMusicPlaying = true;
+            }
+        }
+
+        function stopActivityMusic() {
+            const music = document.getElementById('activityMusic');
+            music.pause();
+            music.currentTime = 0;
+            activityMusicPlaying = false;
+        }
+
+        function showQuestion(index) {
+            document.querySelectorAll('.question').forEach(q => q.style.display = 'none');
+            document.getElementById(`question-${index}`).style.display = 'block';
+        }
+
+        function showNextQuestion() {
+            if (currentQuestion < totalQuestions - 1) {
+                currentQuestion++;
+                showQuestion(currentQuestion);
+            } else {
+                submitActivity();
+            }
+        }
+
+        function selectAnswer(button, questionId, answerId, isCorrect) {
+            playOptionSelected();
+
+            const container = button.closest('.answer-container');
+            container.querySelectorAll('.answer-button').forEach(btn => btn.classList.remove('selected'));
+            button.classList.add('selected');
+            answers[questionId] = answerId;
+
+            // Disable all answer buttons after selection
+            container.querySelectorAll('.answer-button').forEach(btn => btn.disabled = true);
+
+            // Play correct or incorrect sound
+            if (isCorrect) {
+                playCorrectAnswer();
+            } else {
+                playIncorrectAnswer();
+            }
+
+            // Automatically move to the next question after a short delay
+            setTimeout(showNextQuestion, 1500);
+        }
+
+        function submitActivity() {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("activity.submit_activity", activity_id=activity.id) }}';
+            
+            for (const [questionId, answerId] of Object.entries(answers)) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = `question_${questionId}`;
+                input.value = answerId;
+                form.appendChild(input);
+            }
+
+            document.body.appendChild(form);
+            stopActivityMusic();
+            playActivityEnd();
+            setTimeout(() => form.submit(), 1500);
+        }
+
+        // Start the activity music and play the start sound when the page loads
+        window.onload = function() {
+            playActivityStart();
+            setTimeout(() => {
+                startActivityMusic();
+            }, 1500);
+        };
+    </script>
+    <div class="footer"></div>
+</body>
+</html>

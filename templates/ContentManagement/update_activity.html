@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Activity</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>Update Activity</h1>
+        <form method="POST" enctype="multipart/form-data">
+            <label for="activity_title">Activity Title:</label>
+            <input type="text" id="activity_title" name="activity_title" value="{{ activity.title }}" required>
+
+            <label for="stem_code">STEM Code:</label>
+            <select id="stem_code" name="stem_code" required>
+                <option value="SCIENCE" {% if activity.stem_code == 'SCIENCE' %}selected{% endif %}>Science</option>
+                <option value="TECHNOLOGY" {% if activity.stem_code == 'TECHNOLOGY' %}selected{% endif %}>Technology</option>
+                <option value="ENGINEERING" {% if activity.stem_code == 'ENGINEERING' %}selected{% endif %}>Engineering</option>
+                <option value="MATH" {% if activity.stem_code == 'MATH' %}selected{% endif %}>Math</option>
+            </select>
+
+            <label for="level">Level:</label>
+            <select id="level" name="level" required>
+                <option value="BEGINNER" {% if activity.level == 'BEGINNER' %}selected{% endif %}>Beginner</option>
+                <option value="INTERMEDIATE" {% if activity.level == 'INTERMEDIATE' %}selected{% endif %}>Intermediate</option>
+                <option value="ADVANCED" {% if activity.level == 'ADVANCED' %}selected{% endif %}>Advanced</option>
+            </select>
+
+            <label for="cover_image">Cover Image:</label>
+            <input type="file" id="cover_image" name="cover_image" accept="image/*">
+            {% if activity.cover_image %}
+                <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" alt="Current Cover Image" height="100">
+            {% endif %}
+
+            <div id="questions">
+                {% for question in activity.questions %}
+                    <div class="question" data-question-id="{{ question.id }}">
+                        <label for="question_{{ loop.index }}">Question {{ loop.index }}:</label>
+                        <input type="text" id="question_{{ loop.index }}" name="question_{{ loop.index }}" value="{{ question.content }}" required>
+
+                        <div class="answers">
+                            {% for answer in question.answers %}
+                                <div class="answer" data-answer-id="{{ answer.id }}">
+                                    <label for="answer_{{ loop.index }}_{{ loop.index0 + 1 }}">Answer {{ loop.index0 + 1 }}:</label>
+                                    <input type="text" id="answer_{{ loop.index }}_{{ loop.index0 + 1 }}" name="answer_{{ loop.index }}_{{ loop.index0 + 1 }}" value="{{ answer.content }}" required>
+                                    <input type="checkbox" id="correct_{{ loop.index }}_{{ loop.index0 + 1 }}" name="correct_{{ loop.index }}_{{ loop.index0 + 1 }}" {% if answer.is_correct %}checked{% endif %}> Correct
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <button type="button" onclick="addQuestion()">Add Another Question</button>
+            <button type="submit">Update Activity</button>
+        </form>
+    </div>
+
+    <script>
+        let questionCount = {{ activity.questions|length }};
+
+        function addQuestion() {
+            questionCount++;
+            const questionsDiv = document.getElementById('questions');
+            const newQuestionDiv = document.createElement('div');
+            newQuestionDiv.className = 'question';
+            newQuestionDiv.dataset.questionId = questionCount; // Using data attributes for better organization
+            newQuestionDiv.innerHTML = `
+                <label for="question_${questionCount}">Question ${questionCount}:</label>
+                <input type="text" id="question_${questionCount}" name="question_${questionCount}" required>
+                <div class="answers">
+                    <div class="answer">
+                        <label for="answer_${questionCount}_1">Answer 1:</label>
+                        <input type="text" id="answer_${questionCount}_1" name="answer_${questionCount}_1" required>
+                        <input type="checkbox" id="correct_${questionCount}_1" name="correct_${questionCount}_1"> Correct
+                    </div>
+                    <div class="answer">
+                        <label for="answer_${questionCount}_2">Answer 2:</label>
+                        <input type="text" id="answer_${questionCount}_2" name="answer_${questionCount}_2" required>
+                        <input type="checkbox" id="correct_${questionCount}_2" name="correct_${questionCount}_2"> Correct
+                    </div>
+                </div>
+            `;
+            questionsDiv.appendChild(newQuestionDiv);
+        }
+    </script>
+    <div class="footer"></div>
+</body>
+</html>

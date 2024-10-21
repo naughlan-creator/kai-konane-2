@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Feedback</h1>
+        <a href="{{ url_for('feedback.home') }}" class="button" style="background-color: #FFC107;" onclick="playAndNavigate('back', this.href); return false;">Home</a>
+    </div>
+    <div class="content">
+        <div class="button-container">
+            <a href="{{ url_for('feedback.write_feedback') }}" class="button" style="background-color: #921331;" onclick="playAndNavigate('click', this.href); return false;">Write Feedback</a>
+            <a href="{{ url_for('feedback.view_feedback') }}" class="button" style="background-color: #4CAF50;" onclick="playAndNavigate('click', this.href); return false;">View New Feedback</a>
+            <a href="{{ url_for('feedback.past_feedback') }}" class="button" style="background-color: #2196F3;" onclick="playAndNavigate('click', this.href); return false;">Past Feedback</a>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let backgroundMusicSource = null;
+        let backgroundMusicGainNode = null;
+
+        function playBackgroundMusic() {
+            if (backgroundMusicSource) {
+                backgroundMusicSource.stop();
+            }
+            backgroundMusicSource = audioManager.context.createBufferSource();
+            backgroundMusicSource.buffer = audioManager.sounds['feedback'];
+            backgroundMusicGainNode = audioManager.context.createGain();
+            backgroundMusicSource.connect(backgroundMusicGainNode);
+            backgroundMusicGainNode.connect(audioManager.masterGainNode);
+            backgroundMusicSource.loop = true;
+            backgroundMusicSource.start(0);
+        }
+
+        function fadeOutBackgroundMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (backgroundMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    backgroundMusicGainNode.gain.setValueAtTime(backgroundMusicGainNode.gain.value, currentTime);
+                    backgroundMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutBackgroundMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function initializeFeedbackHomePage() {
+            playBackgroundMusic();
+            initializeVolumeControl();
+
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializeFeedbackHomePage);
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializeFeedbackHomePage();
+        }
+    </script>
+</body>
+</html>

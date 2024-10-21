@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ story.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>{{ story.title }}</h1>
+        {% for page in story.pages %}
+        <div class="story-page">
+            <h2>Page {{ page.number }}</h2>
+            <img src="{{ url_for('static', filename='images/' + page.image_filename) }}" alt="Page {{ page.number }} image" class="page-image">
+            <p>{{ page.content }}</p>
+            <a href="{{ url_for('admin.update_story', story_id=story.id, page_number=page.number) }}" class="btn">Edit Page</a>
+        </div>
+        {% endfor %}
+        <a href="{{ url_for('admin.view_stories') }}" class="btn">Back to All Stories</a>
+    </div>
+    <div class="footer"></div>
+</body>
+</html>

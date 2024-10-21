@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Preschool - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        
+        .content {
+            background-image: url('/static/background_pictures/admin_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Add a New Preschool</h1>
+    </div>
+    <div class="content">
+        <form action="{{ url_for('preschool.add_preschool') }}" method="post" onsubmit="return validateForm()">
+            <label for="name" style="color: white;">Preschool Name:</label>
+            <input type="text" id="name" name="name" required>
+            <button type="submit" class="login-btn" onclick="playSound('click')">Add</button>
+            <button type="button" class="logout-btn" onclick="playAndNavigate('back', '{{ url_for('admin.admin_home') }}')">Back</button>
+        </form>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider" style="color: white;">Volume</label>
+    </div>
+
+    <script>
+        let adminMusicSource = null;
+        let adminMusicGainNode = null;
+
+        function playAdminMusic() {
+            if (adminMusicSource) {
+                adminMusicSource.stop();
+            }
+            adminMusicSource = audioManager.context.createBufferSource();
+            adminMusicSource.buffer = audioManager.sounds['adminMusic'];
+            adminMusicGainNode = audioManager.context.createGain();
+            adminMusicSource.connect(adminMusicGainNode);
+            adminMusicGainNode.connect(audioManager.masterGainNode);
+            adminMusicSource.loop = true;
+            adminMusicSource.start(0);
+        }
+
+        function fadeOutAdminMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (adminMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    adminMusicGainNode.gain.setValueAtTime(adminMusicGainNode.gain.value, currentTime);
+                    adminMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutAdminMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function validateForm() {
+            const name = document.getElementById("name").value;
+            if (name === "") {
+                playSound('error');
+                alert("Please enter the preschool name.");
+                return false;
+            }
+            playSound('universalSuccess');
+            return true;
+        }
+
+        function initializeAddPreschoolPage() {
+            playAdminMusic();
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+
+            // Add sound to input field
+            const nameInput = document.getElementById('name');
+            nameInput.addEventListener('keyup', function() {
+                playLetterTyped();
+            });
+        }
+
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager.soundsLoaded) {
+                initializeAddPreschoolPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeAddPreschoolPage);
+            }
+        });
+    </script>
+</body>
+</html>

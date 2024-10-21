@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Past Feedback</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+
+<body>
+    <div class="header">
+        <h1 class="title">Past Feedback</h1>
+    </div>
+    <div class="content">
+        <input type="text" id="search-input" onkeyup="filterTable()" placeholder="Search for subjects or senders...">
+        <div class="table-container">
+            <table id="feedback-table">
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Sender</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for feedback in feedbacks %}
+                    <tr>
+                        <td><a href="{{ url_for('feedback.read_feedback', feedback_id=feedback.id) }}" onclick="playAndNavigate('click', this.href); return false;">
+                            {{ feedback.subject }}</a></td>
+                        <td>{{ feedback.sender.firstname }} {{ feedback.sender.lastname }}</td>
+                        <td>{{ feedback.dateTime.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ "Read" if feedback.isRead else "Unread" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ url_for('feedback.feedback_home') }}" class="button" style="background-color: #FF5722;" onclick="playAndNavigate('back', this.href); return false;">Close</a>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let backgroundMusicSource = null;
+        let backgroundMusicGainNode = null;
+
+        function playBackgroundMusic() {
+            if (backgroundMusicSource) {
+                backgroundMusicSource.stop();
+            }
+            backgroundMusicSource = audioManager.context.createBufferSource();
+            backgroundMusicSource.buffer = audioManager.sounds['feedback'];
+            backgroundMusicGainNode = audioManager.context.createGain();
+            backgroundMusicSource.connect(backgroundMusicGainNode);
+            backgroundMusicGainNode.connect(audioManager.masterGainNode);
+            backgroundMusicSource.loop = true;
+            backgroundMusicSource.start(0);
+        }
+
+        function fadeOutBackgroundMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (backgroundMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    backgroundMusicGainNode.gain.setValueAtTime(backgroundMusicGainNode.gain.value, currentTime);
+                    backgroundMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutBackgroundMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function filterTable() {
+            let input = document.getElementById("search-input").value.toUpperCase();
+            let table = document.getElementById("feedback-table");
+            let tr = table.getElementsByTagName("tr");
+
+            for (let i = 1; i < tr.length; i++) {
+                let tdSubject = tr[i].getElementsByTagName("td")[0];
+                let tdSender = tr[i].getElementsByTagName("td")[1];
+                if (tdSubject || tdSender) {
+                    let txtValueSubject = tdSubject.textContent || tdSubject.innerText;
+                    let txtValueSender = tdSender.textContent || tdSender.innerText;
+                    if (txtValueSubject.toUpperCase().indexOf(input) > -1 || txtValueSender.toUpperCase().indexOf(input) > -1) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
+                }
+            }
+            playSound('letter_typed');
+        }
+
+        function initializePastFeedbackPage() {
+            playBackgroundMusic();
+            initializeVolumeControl();
+
+            // Add typing sound to search input
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('keydown', () => playSound('letter_typed'));
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializePastFeedbackPage);
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializePastFeedbackPage();
+        }
+    </script>
+</body>
+
+</html>

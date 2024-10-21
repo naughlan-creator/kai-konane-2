@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Story - {{ story.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="header"></div>
+    <div class="content">
+        <h1>Update Story: {{ story.title }}</h1>
+        <form method="POST" enctype="multipart/form-data">
+            <label for="story_title">Story Title:</label>
+            <input type="text" id="story_title" name="story_title" value="{{ story.title }}" required>
+
+            <label for="level">Level:</label>
+            <select id="level" name="level" required>
+                <option value="BEGINNER" {% if story.level == 'BEGINNER' %}selected{% endif %}>Beginner</option>
+                <option value="INTERMEDIATE" {% if story.level == 'INTERMEDIATE' %}selected{% endif %}>Intermediate</option>
+                <option value="ADVANCED" {% if story.level == 'ADVANCED' %}selected{% endif %}>Advanced</option>
+            </select>
+
+            <label for="cover_image">Current Cover Image:</label>
+            <img src="{{ url_for('static', filename='images/' + story.cover_page) }}" alt="Current cover image" style="max-width: 200px;">
+            <label for="cover_image">Update Cover Image (leave blank to keep current):</label>
+            <input type="file" id="cover_image" name="cover_image" accept="image/*">
+
+            <div id="pages">
+                {% for page in story.pages %}
+                <div class="page">
+                    <h3>Page {{ loop.index }}</h3>
+                    <label for="page_content_{{ loop.index }}">Page Content:</label>
+                    <textarea id="page_content_{{ loop.index }}" name="page_content_{{ loop.index }}" required>{{ page.line_of_page }}</textarea>
+
+                    <label for="page_image_{{ loop.index }}">Current Page Image:</label>
+                    <img src="{{ url_for('static', filename='images/' + page.image_filename) }}" alt="Page {{ loop.index }} image" style="max-width: 200px;">
+                    <label for="page_image_{{ loop.index }}">Update Page Image (leave blank to keep current):</label>
+                    <input type="file" id="page_image_{{ loop.index }}" name="page_image_{{ loop.index }}" accept="image/*">
+
+                    <label for="is_last_page_{{ loop.index }}">Last Page?</label>
+                    <input type="checkbox" id="is_last_page_{{ loop.index }}" name="is_last_page_{{ loop.index }}" {% if page.is_last_page %}checked{% endif %}>
+                </div>
+                {% endfor %}
+            </div>
+
+            <button type="button" onclick="addPage()">Add Another Page</button>
+            <button type="submit">Update Story</button>
+        </form>
+    </div>
+
+    <script>
+        let pageCount = {{ story.pages|length }};
+
+        function addPage() {
+            pageCount++;
+            const pageDiv = document.createElement('div');
+            pageDiv.className = 'page';
+            pageDiv.innerHTML = `
+                <h3>Page ${pageCount}</h3>
+                <label for="page_content_${pageCount}">Page Content:</label>
+                <textarea id="page_content_${pageCount}" name="page_content_${pageCount}" required></textarea>
+
+                <label for="page_image_${pageCount}">Page Image:</label>
+                <input type="file" id="page_image_${pageCount}" name="page_image_${pageCount}" accept="image/*" required>
+
+                <label for="is_last_page_${pageCount}">Last Page?</label>
+                <input type="checkbox" id="is_last_page_${pageCount}" name="is_last_page_${pageCount}">
+            `;
+            document.getElementById('pages').appendChild(pageDiv);
+        }
+    </script>
+    <div class="footer"></div>
+</body>
+</html>

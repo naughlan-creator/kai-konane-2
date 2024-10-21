@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Child Home - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+
+    <style>
+
+        .content {
+            background-image: url('/static/background_pictures/child_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0svi;
+        }
+        
+    </style>
+
+    <div class="header">
+        <h1 class="title">Welcome, {{ current_user.username }}!</h1>
+        <button onclick="fadeOutMusicAndNavigate('bye', '{{ url_for('user.logout') }}')" class="logout-btn">Logout</button>
+    </div>
+    <div class="content">
+        <div class="button-container">
+            <button onclick="fadeOutMusicAndNavigate('universalSuccess', '{{ url_for('learning_content.learning_content') }}')" class="button">Learning Content</button>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>    
+
+    <script>
+        let backgroundMusic;
+
+        function playLoopingChildMusic() {
+            audioManager.initializeContext();
+            backgroundMusic = audioManager.context.createBufferSource();
+            backgroundMusic.buffer = audioManager.sounds['childMusic'];
+            backgroundMusic.loop = true;
+            backgroundMusic.connect(audioManager.masterGainNode);
+            backgroundMusic.start(0);
+        }
+
+        function fadeOutMusic(duration = 1000) {
+            if (audioManager.masterGainNode) {
+                const currentVolume = audioManager.masterGainNode.gain.value;
+                audioManager.masterGainNode.gain.setValueAtTime(currentVolume, audioManager.context.currentTime);
+                audioManager.masterGainNode.gain.linearRampToValueAtTime(0, audioManager.context.currentTime + duration / 1000);
+
+                setTimeout(() => {
+                    if (backgroundMusic) {
+                        backgroundMusic.stop();
+                        backgroundMusic = null;
+                    }
+                    // Reset the volume after fading out
+                    audioManager.setVolume(currentVolume);
+                }, duration);
+            }
+        }
+
+        function fadeOutMusicAndNavigate(soundId, url) {
+            fadeOutMusic();
+            setTimeout(() => {
+                playAndNavigate(soundId, url);
+            }, 1000); // Wait for 1 second before navigating
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const soundsToLoad = [
+                { id: 'hello_child', url: '/static/sounds/hello_child.wav' },
+                { id: 'childMusic', url: '/static/sounds/child_music.wav' },
+                { id: 'bye', url: '/static/sounds/bye.mp3' },
+                { id: 'universalSuccess', url: '/static/sounds/universal_success.wav' }
+            ];
+
+            Promise.all(soundsToLoad.map(sound => audioManager.loadSound(sound.id, sound.url)))
+            .then(() => {
+                console.log('All sounds loaded successfully');
+                // Play the hello_child sound once
+                return audioManager.playSound('hello_child');
+            })
+            .then(() => {
+                // Start the looping background music
+                playLoopingChildMusic();
+            })
+            .catch(error => console.error('Error loading sounds:', error));
+
+            // Initialize volume control
+            initializeVolumeControl();
+        });
+    </script>
+</body>
+</html>

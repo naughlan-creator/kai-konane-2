@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <div class="header">
+    </div>
+    <div class="content">
+        <div class="question">
+            <h1>Sign Up</h1>
+            <h2>Are you a parent or teacher?</h2>
+        </div>
+
+        <div id="notification-container" class="notification-container" style="display: none;">
+            <div class="notification-content">
+                <p id="notification-message"></p>
+                <button onclick="closeNotificationWithSound()">OK</button>
+            </div>
+        </div>        
+
+        <div class="button-container">
+            <button onclick="playOptionSelectedAndNavigate('{{ url_for('user.parent_signup_1') }}')" class="button" style="background-color: darkcyan;">Parent</button>
+            <button onclick="playOptionSelectedAndNavigate('{{ url_for('user.teacher_signup_1') }}')" class="button" style="background-color: darkmagenta">Teacher</button>
+        </div>
+        <div class="button-container">
+            <button type="button" class="button" onclick="playBackAndNavigate('{{ url_for('index') }}')">Back</button>
+        </div>
+    </div>
+
+    <script>
+        function playOptionSelectedAndNavigate(url) {
+            playOptionSelected().then(() => {
+                window.location.href = url;
+            });
+        }
+
+        function playBackAndNavigate(url) {
+            playBack().then(() => {
+                window.location.href = url;
+            });
+        }
+
+        function showNotification(message) {
+            document.getElementById('notification-message').textContent = message;
+            document.getElementById('notification-container').style.display = 'flex';
+        }
+
+        function closeNotificationWithSound() {
+            playSound('optionSelected').then(() => {
+                document.getElementById('notification-container').style.display = 'none';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        showNotification("{{ message }}");
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if notification %}
+                showNotification("{{ notification }}");
+            {% endif %}
+
+            // Preload sounds
+            audioManager.loadSound('click', '{{ url_for('static', filename='sounds/click.wav') }}');
+            audioManager.loadSound('back', '{{ url_for('static', filename='sounds/back.wav') }}');
+        });
+    </script>
+    <div class="footer"></div>
+</body>
+</html>

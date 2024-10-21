@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log In - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        showNotification("{{ message }}");
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if notification %}
+                showNotification("{{ notification }}");
+            {% endif %}
+
+             // Add event listeners for input fields
+             document.getElementById('username').addEventListener('input', function(event) {
+                if (event.inputType === 'deleteContentBackward') {
+                    playLetterDeleted();
+                } else {
+                    playLetterTyped();
+                }
+            });
+
+            document.getElementById('password').addEventListener('input', function(event) {
+                if (event.inputType === 'deleteContentBackward') {
+                    playLetterDeleted();
+                } else {
+                    playPasswordTyped();
+                }
+            });
+
+            // Add event listener for login button
+            document.querySelector('.login-btn').addEventListener('click', function(event) {
+                event.preventDefault();
+                playSound('click').then(() => {
+                    document.querySelector('form').submit();
+                });
+            });
+
+            // Add event listener for back button
+            document.querySelector('.logout-btn').addEventListener('click', function() {
+                playAndNavigate('back', "{{ url_for('index') }}");
+            });
+
+        });
+
+        function playAndNavigate(soundId, url) {
+            playSound(soundId).then(() => {
+                window.location.href = url;
+            });
+        }
+
+        function goBack() {
+            playAndNavigate('back', "{{ url_for('index') }}");
+        }
+
+        function submitForm() {
+            playSound('optionSelected').then(() => {
+                document.querySelector('form').submit();
+            });
+        }
+
+        function showNotification(message) {
+            document.getElementById('notification-message').textContent = message;
+            document.getElementById('notification-container').style.display = 'flex';
+            playSound('error');
+        }
+
+        function closeNotification() {
+            playSound('click').then(() => {
+                document.getElementById('notification-container').style.display = 'none';
+            });
+        }
+    </script>
+</head>
+<body>
+    <div id="notification-container" class="notification-container" style="display: none;">
+        <div class="notification-content">
+            <p id="notification-message"></p>
+            <button onclick="closeNotification()">OK</button>
+        </div>
+    </div>
+
+    <div class="header"></div>
+    <div class="content">
+        <h1>Log In</h1>
+        <form method="POST" action="{{ url_for('user.login') }}" onsubmit="event.preventDefault(); submitForm();">
+            <div class="label">Username</div>
+            <input type="text" class="input-field" placeholder="Enter username" id="username" name="username" required>
+            
+            <div class="label">Password</div>
+            <input type="password" class="input-field" placeholder="Enter password" id="password" name="password" required>
+            <div class="button-container">
+                <button type="submit" class="login-btn">Log in</button>
+                <button type="button" class="logout-btn" onclick="goBack()">Back</button>
+            </div>
+        </form>
+    </div>
+    <div class="footer"></div>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Home - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+
+    <style>
+
+        .content {
+            background-image: url('/static/background_pictures/admin_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0svi;
+        }
+        
+    </style>
+
+    <div class="header">
+        <h1 class="title">Hello Admin</h1>
+        <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
+    </div>
+    <div class="content">
+        <div class="button-container">
+            <button data-href="{{ url_for('admin.add_content') }}" class="button" style="background-color: #4CAF50;">Add Content</button>
+            <button data-href="{{ url_for('admin.modify_content') }}" class="button" style="background-color: #FF9800;">Modify or Delete Content</button>
+            <button data-href="{{ url_for('admin.view_user_data') }}" class="button" style="background-color: #2196F3;">View Users Data</button>
+            <button data-href="{{ url_for('preschool.add_preschool') }}" class="button" style="background-color: #ff3b41;">Add Preschool</button>
+            <button data-href="{{ url_for('preschool.view_preschools') }}" class="button" style="background-color: #9C27B0;">View Preschools</button>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider" style="color: white;">Volume</label>
+    </div>
+
+    <script>
+        let adminMusicSource = null;
+        let adminMusicGainNode = null;
+
+        function confirmLogout() {
+            fadeOutAdminMusic().then(() => {
+                playSound('click').then(() => {
+                    const logout = confirm("Are you sure you want to log out?");
+                    if (logout) {
+                        playSound('bye').then(() => {
+                            window.location.href = "{{ url_for('user.logout') }}";
+                        });
+                    } else {
+                        fadeInAdminMusic();
+                    }
+                });
+            });
+        }
+
+        function playAndNavigate(url) {
+            fadeOutAdminMusic().then(() => {
+                playSound('click').then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function playAdminMusic() {
+            if (adminMusicSource) {
+                adminMusicSource.stop();
+            }
+            adminMusicSource = audioManager.context.createBufferSource();
+            adminMusicSource.buffer = audioManager.sounds['adminMusic'];
+            adminMusicGainNode = audioManager.context.createGain();
+            adminMusicSource.connect(adminMusicGainNode);
+            adminMusicGainNode.connect(audioManager.masterGainNode);
+            adminMusicSource.loop = true;
+            adminMusicSource.start(0);
+        }
+
+        function fadeOutAdminMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (adminMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    adminMusicGainNode.gain.setValueAtTime(adminMusicGainNode.gain.value, currentTime);
+                    adminMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function fadeInAdminMusic(duration = 0.5) {
+            if (adminMusicGainNode) {
+                const currentTime = audioManager.context.currentTime;
+                adminMusicGainNode.gain.setValueAtTime(0, currentTime);
+                adminMusicGainNode.gain.linearRampToValueAtTime(1, currentTime + duration);
+            }
+        }
+
+        function initializeAdminPage() {
+            const isReturningToAdminHome = sessionStorage.getItem('returningToAdminHome');
+            
+            if (isReturningToAdminHome) {
+                playSound('adminPage').then(() => {
+                    playAdminMusic();
+                });
+                sessionStorage.removeItem('returningToAdminHome');
+            } else {
+                playAdminMusic();
+            }
+
+            const buttons = document.querySelectorAll('.button-container .button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('data-href');
+                    playAndNavigate(url);
+                });
+            });
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializeAdminPage);
+
+        // Set flag when navigating away from admin home
+        window.addEventListener('beforeunload', function() {
+            sessionStorage.setItem('returningToAdminHome', 'true');
+        });
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializeAdminPage();
+        }
+    </script>
+</body>
+</html>

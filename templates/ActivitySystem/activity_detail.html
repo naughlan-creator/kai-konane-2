@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ activity.title }} - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">{{ activity.title }}</h1>
+        <button onclick="location.href='{{ url_for('activity.activity_home') }}'" class="button back-btn">Back to Activities</button>
+    </div>
+    <div class="content">
+        <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" alt="{{ activity.title }} cover" class="activity-cover">
+        <div id="question-container">
+            {% for question in activity.questions %}
+            <div class="question" id="question-{{ loop.index0 }}" style="display: {% if loop.first %}block{% else %}none{% endif %};">
+                <h2>Question {{ loop.index }} of {{ activity.questions|length }}</h2>
+                <p>{{ question.content }}</p>
+                {% for answer in question.answers %}
+                <label class="answer-label">
+                    <input type="radio" name="question_{{ question.id }}" value="{{ answer.id }}">
+                    {{ answer.content }}
+                </label>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="button-container">
+            <button id="prev-btn" class="button" onclick="showPreviousQuestion()" disabled>Previous</button>
+            <button id="next-btn" class="button" onclick="showNextQuestion()">Next</button>
+            <button id="submit-btn" class="button" onclick="submitActivity()" style="display: none;">Submit</button>
+        </div>
+    </div>
+    <script>
+        let currentQuestion = 0;
+        const totalQuestions = {{ activity.questions|length }};
+
+        function showQuestion(index) {
+            document.querySelectorAll('.question').forEach(q => q.style.display = 'none');
+            document.getElementById(`question-${index}`).style.display = 'block';
+            document.getElementById('prev-btn').disabled = index === 0;
+            document.getElementById('next-btn').style.display = index === totalQuestions - 1 ? 'none' : 'inline-block';
+            document.getElementById('submit-btn').style.display = index === totalQuestions - 1 ? 'inline-block' : 'none';
+        }
+
+        function showNextQuestion() {
+            if (currentQuestion < totalQuestions - 1) {
+                currentQuestion++;
+                showQuestion(currentQuestion);
+            }
+        }
+
+        function showPreviousQuestion() {
+            if (currentQuestion > 0) {
+                currentQuestion--;
+                showQuestion(currentQuestion);
+            }
+        }
+
+        function submitActivity() {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = "{{ url_for('activity.submit_activity', activity_id=activity.id) }}";
+            
+            document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = radio.name;
+                input.value = radio.value;
+                form.appendChild(input);
+            });
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</div>
+<div class="footer"></div>
+</body>
+</html>

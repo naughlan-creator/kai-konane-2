@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learning Content - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Learning Content</h1>
+        <button onclick="fadeOutMusicAndNavigate('back', '{{ url_for('user.child_home') }}')" class="logout-btn">Back to Home</button>
+    </div>
+    <div class="content">
+        <div class="button-container">
+            <button onclick="fadeOutMusicAndNavigate('universalSuccess', '{{ url_for('story.stories') }}')" class="button" style="background-color: darkcyan;">Stories</button>
+            <button onclick="fadeOutMusicAndNavigate('universalSuccess', '{{ url_for('activity.activity_home') }}')" class="button" style="background-color: orange;">Activities</button>
+        </div>
+
+        <div class="volume-slider-container">
+            <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+            <label for="volumeSlider">Volume</label>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <script>
+        let backgroundMusic;
+
+        function playLoopingBackgroundMusic() {
+            audioManager.initializeContext();
+            backgroundMusic = audioManager.context.createBufferSource();
+            backgroundMusic.buffer = audioManager.sounds['activityMusic']; // Using activityMusic for background
+            backgroundMusic.loop = true;
+            backgroundMusic.connect(audioManager.masterGainNode);
+            backgroundMusic.start(0);
+        }
+    
+        function fadeOutMusic(duration = 1000) {
+            if (audioManager.masterGainNode) {
+                const currentVolume = audioManager.masterGainNode.gain.value;
+                audioManager.masterGainNode.gain.setValueAtTime(currentVolume, audioManager.context.currentTime);
+                audioManager.masterGainNode.gain.linearRampToValueAtTime(0, audioManager.context.currentTime + duration / 1000);
+    
+                setTimeout(() => {
+                    if (backgroundMusic) {
+                        backgroundMusic.stop();
+                        backgroundMusic = null;
+                    }
+                    // Reset the volume after fading out
+                    audioManager.setVolume(currentVolume);
+                }, duration);
+            }
+        }
+    
+        function fadeOutMusicAndNavigate(soundId, url) {
+            fadeOutMusic(500); // Fade out more quickly
+            setTimeout(() => {
+                audioManager.playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            }, 500); // Wait for 500ms before playing the sound and navigating
+        }
+    
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize volume control
+            initializeVolumeControl();
+    
+            // Load sounds
+            const soundsToLoad = [
+                { id: 'activityMusic', url: '/static/sounds/activity_music.wav' },
+                { id: 'back', url: '/static/sounds/back.wav' },
+                { id: 'universalSuccess', url: '/static/sounds/universal_success.wav' }
+            ];
+    
+            Promise.all(soundsToLoad.map(sound => audioManager.loadSound(sound.id, sound.url)))
+            .then(() => {
+                console.log('All sounds loaded successfully');
+                // Start the looping background music
+                playLoopingBackgroundMusic();
+            })
+            .catch(error => console.error('Error loading sounds:', error));
+        });
+    </script>
+</body>
+</html>

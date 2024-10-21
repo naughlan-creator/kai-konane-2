@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learner Results - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        .header, .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .header {
+            top: 0;
+        }
+        .footer {
+            bottom: 0;
+        }
+        .content {
+            background-image: url('/static/background_pictures/teacher_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            min-height: 60vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Learner Results</h1>
+        <button onclick="playAndNavigate('back', '{{ url_for('user.teacher_home') }}')" class="button">Home</button>
+    </div>
+    <div class="content">
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search results...">
+        </div>
+        <table id="results-table">
+            <thead>
+                <tr>
+                    <th data-sort="child">Child</th>
+                    <th data-sort="activity">Activity</th>
+                    <th data-sort="score">Score</th>
+                    <th data-sort="date">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in results_data %}
+                    <tr>
+                        <td>{{ result.child.firstname }} {{ result.child.lastname }}</td>
+                        <td>{{ result.activity.title }}</td>
+                        <td>{{ result.score }}%</td>
+                        <td>{{ result.date_acquired.strftime('%Y-%m-%d') }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div id="graph-container" style="display: none; width: 400px; height: 200px;">
+            <canvas id="stem-graph"></canvas>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/stem_graph.js') }}"></script>
+    <script>
+        let resultsMusicSource = null;
+        let resultsMusicGainNode = null;
+
+        function playResultsMusic() {
+            if (resultsMusicSource) {
+                resultsMusicSource.stop();
+            }
+            resultsMusicSource = audioManager.context.createBufferSource();
+            resultsMusicSource.buffer = audioManager.sounds['results'];
+            resultsMusicGainNode = audioManager.context.createGain();
+            resultsMusicSource.connect(resultsMusicGainNode);
+            resultsMusicGainNode.connect(audioManager.masterGainNode);
+            resultsMusicSource.loop = true;
+            resultsMusicSource.start(0);
+        }
+
+        function fadeOutResultsMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (resultsMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    resultsMusicGainNode.gain.setValueAtTime(resultsMusicGainNode.gain.value, currentTime);
+                    resultsMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutResultsMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function initializeLearnerResultsPage() {
+            playResultsMusic();
+
+            const searchInput = document.getElementById('search-input');
+            const table = document.getElementById('results-table');
+            const rows = table.getElementsByTagName('tr');
+            const headers = table.querySelectorAll('th[data-sort]');
+
+            // Search functionality
+            searchInput.addEventListener('keyup', function() {
+                playLetterTyped();
+                const searchTerm = this.value.toLowerCase();
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(searchTerm) ? '' : 'none';
+                }
+            });
+
+            // Sorting functionality
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    playSound('click');
+                    const column = this.dataset.sort;
+                    const isAscending = this.classList.contains('asc');
+                    
+                    sortTable(column, !isAscending);
+                    
+                    headers.forEach(h => h.classList.remove('asc', 'desc'));
+                    this.classList.add(isAscending ? 'desc' : 'asc');
+                });
+            });
+
+            function sortTable(column, asc) {
+                const tbody = table.querySelector('tbody');
+                const rowsArray = Array.from(tbody.querySelectorAll('tr'));
+                const columnIndex = Array.from(headers).findIndex(h => h.dataset.sort === column);
+
+                rowsArray.sort((a, b) => {
+                    const aValue = a.cells[columnIndex].textContent.trim();
+                    const bValue = b.cells[columnIndex].textContent.trim();
+                    return asc ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+                });
+
+                rowsArray.forEach(row => tbody.appendChild(row));
+            }
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager.soundsLoaded) {
+                initializeLearnerResultsPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeLearnerResultsPage);
+            }
+        });
+    </script>
+</body>
+</html>

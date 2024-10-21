@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parent Home - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+
+    <style>
+        .content {
+            background-image: url('/static/background_pictures/parent_page.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+    </style>
+
+</head>
+<body>
+    <div class="header">
+        <button onclick="playAndNavigate('{{ url_for('profile.profile') }}')" class="login-btn">Profile</button>
+        <h1 class="title">Hello Parent</h1>
+        <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
+    </div>
+    <div class="content">
+        <div class="button-container">
+            <button data-href="{{ url_for('feedback.feedback_home') }}" class="button" style="background-color: #42A5F5;">Feedback</button>
+            <button data-href="{{ url_for('user.view_children') }}" class="button" style="background-color: #00897B;">View My Children</button>
+            <button data-href="{{ url_for('progress.parent_progress') }}" class="button" style="background-color: #66BB6A;">Check Progress</button>
+            <button data-href="{{ url_for('progress.parent_results') }}" class="button" style="background-color: #FFA726;">Check Results</button>
+        </div>
+    </div>
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let parentMusicSource = null;
+        let parentMusicGainNode = null;
+
+        function confirmLogout() {
+            fadeOutParentMusic().then(() => {
+                playSound('click').then(() => {
+                    const logout = confirm("Are you sure you want to log out?");
+                    if (logout) {
+                        playSound('bye').then(() => {
+                            window.location.href = "{{ url_for('user.logout') }}";
+                        });
+                    } else {
+                        fadeInParentMusic();
+                    }
+                });
+            });
+        }
+
+        function playAndNavigate(url) {
+            fadeOutParentMusic().then(() => {
+                playSound('click').then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function playParentMusic() {
+            if (parentMusicSource) {
+                parentMusicSource.stop();
+            }
+            parentMusicSource = audioManager.context.createBufferSource();
+            parentMusicSource.buffer = audioManager.sounds['parentMusic'];
+            parentMusicGainNode = audioManager.context.createGain();
+            parentMusicSource.connect(parentMusicGainNode);
+            parentMusicGainNode.connect(audioManager.masterGainNode);
+            parentMusicSource.loop = true;
+            parentMusicSource.start(0);
+        }
+
+        function fadeOutParentMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (parentMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    parentMusicGainNode.gain.setValueAtTime(parentMusicGainNode.gain.value, currentTime);
+                    parentMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function fadeInParentMusic(duration = 0.5) {
+            if (parentMusicGainNode) {
+                const currentTime = audioManager.context.currentTime;
+                parentMusicGainNode.gain.setValueAtTime(0, currentTime);
+                parentMusicGainNode.gain.linearRampToValueAtTime(1, currentTime + duration);
+            }
+        }
+
+        function initializeParentPage() {
+            const isReturningToParentHome = sessionStorage.getItem('returningToParentHome');
+            
+            if (isReturningToParentHome) {
+                playSound('parentPage').then(() => {
+                    playParentMusic();
+                });
+                sessionStorage.removeItem('returningToParentHome');
+            } else {
+                playParentMusic();
+            }
+
+            const buttons = document.querySelectorAll('.button-container .button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const url = this.getAttribute('data-href');
+                    playAndNavigate(url);
+                });
+            });
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for sounds to load before initializing the page
+        document.addEventListener('soundsLoaded', initializeParentPage);
+
+        // Set flag when navigating away from parent home
+        window.addEventListener('beforeunload', function() {
+            sessionStorage.setItem('returningToParentHome', 'true');
+        });
+
+        // Initialize the page if sounds are already loaded
+        if (window.audioManager && window.audioManager.soundsLoaded) {
+            initializeParentPage();
+        }
+    </script>
+</body>
+</html>

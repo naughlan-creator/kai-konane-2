@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Learning Plan - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <style>
+        .header, .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        .header {
+            top: 0;
+        }
+        .footer {
+            bottom: 0;
+        }
+        .content {
+            margin-top: 80px; /* Adjust based on your header height */
+            margin-bottom: 60px; /* Adjust based on your footer height */
+            overflow-y: auto;
+            height: calc(100vh - 140px); /* Adjust based on header and footer heights */
+            background-image: url("/static/background_pictures/teacher_page.jpg");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            padding: 20px;
+        }
+        form {
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">Create Learning Plan for {{ child.firstname }} {{ child.lastname }}</h1>
+        <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
+    </div>
+
+    <div class="content">
+        <form action="{{ url_for('learning_plan.create_learning_plan', child_id=child.id) }}" method="post" id="learningPlanForm">
+            <label for="science_level">Science Level:</label>
+            <select name="science_level" id="science_level" required>
+                <option value="BEGINNER">Beginner</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+            </select>
+
+            <label for="technology_level">Technology Level:</label>
+            <select name="technology_level" id="technology_level" required>
+                <option value="BEGINNER">Beginner</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+            </select>
+
+            <label for="engineering_level">Engineering Level:</label>
+            <select name="engineering_level" id="engineering_level" required>
+                <option value="BEGINNER">Beginner</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+            </select>
+
+            <label for="math_level">Math Level:</label>
+            <select name="math_level" id="math_level" required>
+                <option value="BEGINNER">Beginner</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+            </select>
+
+            <label for="story_level">Story Level:</label>
+            <select name="story_level" id="story_level" required>
+                <option value="BEGINNER">Beginner</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+            </select>
+
+            <button type="submit" class="btn">Create Learning Plan</button>
+        </form>
+        <button class="back-btn" onclick="playAndNavigate('back', '{{ url_for('user.teacher_home') }}')">Back to Home</button>
+    </div>
+
+    <div class="footer"></div>
+
+    <div class="volume-slider-container">
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <label for="volumeSlider">Volume</label>
+    </div>
+
+    <script>
+        let teacherMusicSource = null;
+        let teacherMusicGainNode = null;
+
+        function playTeacherMusic() {
+            if (teacherMusicSource) {
+                teacherMusicSource.stop();
+            }
+            teacherMusicSource = audioManager.context.createBufferSource();
+            teacherMusicSource.buffer = audioManager.sounds['teacherMusic'];
+            teacherMusicGainNode = audioManager.context.createGain();
+            teacherMusicSource.connect(teacherMusicGainNode);
+            teacherMusicGainNode.connect(audioManager.masterGainNode);
+            teacherMusicSource.loop = true;
+            teacherMusicSource.start(0);
+        }
+
+        function fadeOutTeacherMusic(duration = 0.5) {
+            return new Promise((resolve) => {
+                if (teacherMusicGainNode) {
+                    const currentTime = audioManager.context.currentTime;
+                    teacherMusicGainNode.gain.setValueAtTime(teacherMusicGainNode.gain.value, currentTime);
+                    teacherMusicGainNode.gain.linearRampToValueAtTime(0, currentTime + duration);
+                    setTimeout(resolve, duration * 1000);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function playAndNavigate(soundId, url) {
+            fadeOutTeacherMusic().then(() => {
+                playSound(soundId).then(() => {
+                    window.location.href = url;
+                });
+            });
+        }
+
+        function confirmLogout() {
+            fadeOutTeacherMusic().then(() => {
+                playSound('click').then(() => {
+                    const logout = confirm("Are you sure you want to log out?");
+                    if (logout) {
+                        playSound('bye').then(() => {
+                            window.location.href = "{{ url_for('user.logout') }}";
+                        });
+                    } else {
+                        playTeacherMusic();
+                    }
+                });
+            });
+        }
+
+        function initializeCreateLearningPlanPage() {
+            playTeacherMusic();
+
+            // Add sound effects to form interactions
+            const selects = document.querySelectorAll('select');
+            selects.forEach(select => {
+                select.addEventListener('change', () => playSound('click'));
+            });
+
+            const form = document.getElementById('learningPlanForm');
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                playSound('universalSuccess').then(() => {
+                    form.submit();
+                });
+            });
+
+            // Initialize volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            volumeSlider.value = audioManager.getStoredVolume() * 100;
+            volumeSlider.addEventListener('input', function() {
+                const volume = this.value / 100;
+                audioManager.setVolume(volume);
+            });
+        }
+
+        // Wait for both DOM content and sounds to be loaded before initializing
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.audioManager.soundsLoaded) {
+                initializeCreateLearningPlanPage();
+            } else {
+                document.addEventListener('soundsLoaded', initializeCreateLearningPlanPage);
+            }
+        });
+    </script>
+</body>
+</html>
