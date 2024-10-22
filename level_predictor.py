@@ -23,10 +23,10 @@ def predict_child_level(child_id):
 
         query = """
         SELECT c.age, c.gender, c.race_ethnicity, c.lunch_type, p.education_level as parent_education,
-           CASE 
-               WHEN a.stem_code IS NULL THEN 'UNKNOWN'
-               ELSE CAST(a.stem_code AS CHAR)
-           END as stem_code
+        CASE 
+            WHEN a.stem_code IS NULL THEN 'UNKNOWN'
+            ELSE a.stem_code::text
+        END as stem_code
         FROM children c
         JOIN parents p ON c.parent_id = p.id
         LEFT JOIN results r ON c.id = r.child_id
