@@ -2,7 +2,7 @@ from app import app, db, create_admin, init_db
 import os
 
 # Run these operations only once when the app is first deployed
-if os.environ.get('RENDER_INITIAL_SETUP') != 'done':
+if os.environ.get('RENDER_INITIAL_SETUP') == 'pending':
     with app.app_context():
         init_db()
         create_admin()
