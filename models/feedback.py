@@ -7,7 +7,7 @@ class Feedback(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     recipient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     subject = db.Column(db.String(50), nullable=False)
-    message = db.Column(db.Text(255), nullable=False)
+    message = db.Column(db.Text, nullable=False)
     dateTime = db.Column(db.DateTime, default=datetime.utcnow)
     isRead = db.Column(db.Boolean, default=False)
     child_id = db.Column(db.Integer, db.ForeignKey('children.id'))
