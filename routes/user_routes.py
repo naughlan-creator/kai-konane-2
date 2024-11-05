@@ -28,8 +28,10 @@ def load_user(user_id):
     for UserModel in [User, Parent, Teacher, Child]:
         user = UserModel.query.get(int(user_id))
         if user:
+            db.session.refresh(user)
             return user
     return None
+
 @user_bp.route('/add', methods=['POST'])
 def add_user():
     user = request.json
@@ -374,7 +376,8 @@ def logout():
 @user_bp.route('/child_home')
 @login_required
 def child_home():
-    return render_template('UserManagement/child_home.html')
+    user = Child.query.get(current_user.id)
+    return render_template('UserManagement/child_home.html', user=user)
 
 @user_bp.route('/teacher_home')
 @login_required
