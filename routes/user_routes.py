@@ -26,9 +26,8 @@ login_manager.login_view = 'user.login'
 @login_manager.user_loader
 def load_user(user_id):
     for UserModel in [User, Parent, Teacher, Child]:
-        user = UserModel.query.get(int(user_id))
+        user = UserModel.query.options(db.joinedload('*')).get(int(user_id))
         if user:
-            db.session.refresh(user)
             return user
     return None
 
