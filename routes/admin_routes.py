@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from services.activity_service import ActivityService
 from services.story_service import StoryService
 from models.user import User, Role
+from models.progress import Progress
 from models.learning_content import LCTYPE
 from config import db
 
@@ -262,4 +263,26 @@ def edit_user(user_id):
         return redirect(url_for('admin.view_user_data'))
     
     return render_template('UserManagement/edit_user.html', user=user, roles=Role)
+
+@admin_bp.route('/admin/delete_user/<int:user_id>')
+@login_required
+def delete_user(user_id):
+    if current_user.role != Role.ADMIN:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('admin.view_user_data'))
+    
+    user = User.query.get_or_404(user_id)
+    if user.role == Role.ADMIN:
+        flash('Cannot delete admin users', 'error')
+        return redirect(url_for('admin.view_user_data'))
+    
+    # If user is a Child, delete related Progress records first
+    if user.type == 'child':
+        Progress.query.filter_by(child_id=user.id).delete()
+    
+    db.session.delete(user)
+    db.session.commit()
+    flash('User deleted successfully', 'success')
+    return redirect(url_for('admin.view_user_data'))
+
 

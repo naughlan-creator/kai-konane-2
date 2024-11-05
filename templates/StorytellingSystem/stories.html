@@ -10,7 +10,63 @@
 </head>
 
 <body>
-    <div class="header">
+
+    <style>
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        
+        .content {
+            margin-top: 80px;
+            margin-bottom: 80px;
+            padding: 20px;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .scroll-indicator {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1rem;
+            animation: bounce 1s infinite;
+        }
+        
+        .scroll-up {
+            top: 70px;
+        }
+        
+        .scroll-down {
+            bottom: 70px;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-10px); }
+        }
+    </style>
+
+    <div class="header header-{{ current_user.gender.lower() }}">
         <h1 class="title">Stories</h1>
         <button onclick="playAndNavigate('{{ url_for('learning_content.learning_content') }}')" class="button back-btn">Back to Learning Content</button>
     </div>
@@ -38,7 +94,7 @@
             {% endfor %}
         </div>
     </div>
-    <div class="footer"></div>
+    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
 
     <div class="volume-slider-container">
         <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
@@ -83,16 +139,45 @@
             });
         }
 
-        function initializeStoriesPage() {
-            playActivityMusic();
+        // Add scroll indicators to HTML
+        document.querySelector('.content').insertAdjacentHTML('beforeend', `
+        <div class="scroll-indicator scroll-up">↑ More stories above!</div>
+        <div class="scroll-indicator scroll-down">↓ More stories below!</div>
+        `);
 
-            // Initialize volume control
-            const volumeSlider = document.getElementById('volumeSlider');
-            volumeSlider.value = audioManager.getStoredVolume() * 100;
-            volumeSlider.addEventListener('input', function() {
-                const volume = this.value / 100;
-                audioManager.setVolume(volume);
-            });
+        function updateScrollIndicators() {
+        const content = document.querySelector('.content');
+        const scrollUp = document.querySelector('.scroll-up');
+        const scrollDown = document.querySelector('.scroll-down');
+
+        if (content.scrollTop > 50) {
+            scrollUp.style.display = 'flex';
+        } else {
+            scrollUp.style.display = 'none';
+        }
+
+        if (content.scrollHeight - content.scrollTop - content.clientHeight > 50) {
+            scrollDown.style.display = 'flex';
+        } else {
+            scrollDown.style.display = 'none';
+        }
+        }
+
+        // Add these to your initializeStoriesPage function
+        function initializeStoriesPage() {
+        playActivityMusic();
+
+        const volumeSlider = document.getElementById('volumeSlider');
+        volumeSlider.value = audioManager.getStoredVolume() * 100;
+        volumeSlider.addEventListener('input', function() {
+            const volume = this.value / 100;
+            audioManager.setVolume(volume);
+        });
+
+        // Initialize scroll indicators
+        updateScrollIndicators();
+        document.querySelector('.content').addEventListener('scroll', updateScrollIndicators);
+        window.addEventListener('resize', updateScrollIndicators);
         }
 
         // Wait for sounds to load before initializing the page

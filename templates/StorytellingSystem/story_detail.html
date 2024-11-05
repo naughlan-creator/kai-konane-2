@@ -6,7 +6,7 @@
     <title>{{ story.title }} - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
-    <script src="https://code.responsivevoice.org/responsivevoice.js?key=2I7bdDJ7"></script>
+    <script src="{{ url_for('static', filename='js/voice-config.js') }}"></script>
     <style>
         body, html {
             height: 100vh;
@@ -20,6 +20,11 @@
             flex: 0 0 auto;
         }
         .content {
+            background-image: url('/static/background_pictures/stories_page.jpg');
+            background-size: cover;
+            background-position: center;
+            padding: 30px;
+            position: relative;
             flex: 1 1 auto;
             display: flex;
             flex-direction: column;
@@ -27,7 +32,44 @@
             padding: 10px;
             overflow: hidden;
         }
+
+        .word {
+            display: inline-block;
+            margin: 0 2px;
+            transition: all 0.3s ease;
+        }
+        
+        .highlight-word {
+            display: inline-block;
+            margin: 0 2px;
+            padding: 0 4px;
+            border-radius: 4px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            color: #000;
+            font-weight: bold;
+            animation: popIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        @keyframes popIn {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.85);
+            z-index: 1;
+        }
+
         #story-container {
+            position: relative;
+            z-index: 2;
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -54,11 +96,16 @@
             object-fit: contain;
         }
         .story-text {
-            font-size: 1.2rem;
+            font-size: 2.5rem;
             text-align: center;
-            margin: 10px 0;
-            max-height: 20%;
-            overflow-y: auto;
+            line-height: 1.5;
+            word-spacing: 0.2em;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
         .button-container {
             display: flex;
@@ -66,6 +113,12 @@
             gap: 10px;
             margin-top: 10px;
             flex: 0 0 auto;
+            position: relative;
+            z-index: 2;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
         .footer {
             padding: 5px;
@@ -79,6 +132,35 @@
             padding: 8px 15px;
             font-size: 0.9rem;
         }
+
+        #pause-btn {
+            background-color: #ff4444;
+            position: relative;
+            padding-left: 45px;
+            border: 3px solid #fff;
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+            animation: pulse 2s infinite;
+        }
+        
+        #pause-btn::before {
+            content: '⏸';
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.5rem;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+        }
+
+        form[action*="complete_story"] {
+            display: none;
+        }
+                
     </style>
 </head>
 <body>
@@ -86,7 +168,7 @@
     <audio id="storyEnd" src="{{ url_for('static', filename='sounds/story_end.wav') }}"></audio>
     <audio id="switchPage" src="{{ url_for('static', filename='sounds/switch_page.wav') }}"></audio>
 
-    <div class="header">
+    <div class="header header-{{ current_user.gender.lower() }}">
         <h1 class="title">{{ story.title }}</h1>
         <button onclick="playAndNavigate('back', '{{ url_for('story.stories') }}')" class="button back-btn">Back to Stories</button>
     </div>
@@ -110,7 +192,7 @@
             </form>
         </div>
     </div>
-    <div class="footer"></div>
+    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
 
     <script>
         let currentPage = 0;
@@ -119,18 +201,19 @@
         let speechSynth = window.speechSynthesis;
         let selectedVoice = null;
 
-        document.addEventListener('DOMContentLoaded', function() {
-            // Wait for voices to be loaded
-            speechSynthesis.onvoiceschanged = function() {
-                let voices = speechSynthesis.getVoices();
-                // Select a high-quality female voice (you may need to adjust this based on available voices)
-                selectedVoice = voices.find(voice => voice.name.includes('Female') && voice.lang.startsWith('en')) || voices[0];
-                console.log('Selected voice:', selectedVoice.name);
-            };
+        document.addEventListener('DOMContentLoaded', async function() {
+            await initializeVoice();
+            console.log('Selected voice:', voiceConfig.voice.name);
         });
 
         function startReading() {
             isReading = true;
+            // Hide all buttons except pause
+            document.querySelectorAll('.button-container button').forEach(btn => {
+                if (btn.id !== 'pause-btn') {
+                    btn.style.display = 'none';
+                }
+            });
             document.getElementById('start-btn').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'inline-block';
             
@@ -161,31 +244,70 @@
             playSwitchPage();
         }
 
-        function readCurrentPage() {
+        function highlightWord(word, container) {
+            const span = document.createElement('span');
+            span.textContent = word;
+            span.className = 'highlight-word';
+            container.appendChild(span);
+            
+            span.animate([
+                { 
+                    transform: 'scale(1.2)',
+                    color: '#FF6B6B',
+                    textShadow: '0 0 8px rgba(255, 107, 107, 0.5)'
+                },
+                { 
+                    transform: 'scale(1)',
+                    color: 'inherit',
+                    textShadow: 'none'
+                }
+            ], {
+                duration: 400,
+                easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
+            });
+        }
+
+        async function readCurrentPage() {
             if (!isReading) return;
 
-            console.log(`Reading page ${currentPage + 1} of ${totalPages}`);
-
             const currentPageElement = document.getElementById(`page-${currentPage}`);
-            const text = currentPageElement.querySelector('.story-text').textContent;
-
-            console.log(`Text to read: "${text}"`);
+            const textContainer = currentPageElement.querySelector('.story-text');
+            const text = textContainer.textContent;
+            
+            // Clear and prepare text container
+            textContainer.innerHTML = '';
+            const words = text.split(' ');
+            words.forEach(word => {
+                const wordSpan = document.createElement('span');
+                wordSpan.textContent = word + ' ';
+                wordSpan.className = 'word';
+                textContainer.appendChild(wordSpan);
+            });
 
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.voice = selectedVoice;
-            utterance.rate = 0.9; // Slightly slower rate for clarity
-            utterance.pitch = 1.1; // Slightly higher pitch for a more engaging voice
+            utterance.voice = voiceConfig.voice;
+            utterance.rate = voiceConfig.rate;
+            utterance.pitch = voiceConfig.pitch;
+            utterance.volume = voiceConfig.volume;
 
-            utterance.onstart = () => {
-                console.log(`Started reading page ${currentPage + 1}`);
+            let wordIndex = 0;
+            const wordElements = textContainer.getElementsByClassName('word');
+            
+            utterance.onboundary = (event) => {
+                if (event.name === 'word') {
+                    Array.from(wordElements).forEach(el => el.classList.remove('highlight-word'));
+                    if (wordElements[wordIndex]) {
+                        wordElements[wordIndex].classList.add('highlight-word');
+                        wordIndex++;
+                    }
+                }
             };
 
             utterance.onend = () => {
-                console.log(`Finished reading page ${currentPage + 1}`);
                 if (currentPage < totalPages - 1) {
                     currentPage++;
                     showPage(currentPage);
-                    setTimeout(() => readCurrentPage(), 500);
+                    setTimeout(() => readCurrentPage(), 1000);
                 } else {
                     isReading = false;
                     document.getElementById('pause-btn').style.display = 'none';
@@ -195,13 +317,47 @@
                 }
             };
 
-            utterance.onerror = (event) => {
-                console.error(`Error reading page ${currentPage + 1}:`, event.error);
-            };
+            speechSynthesis.speak(utterance);
+        }
+        
+        
 
-            speechSynth.speak(utterance);
+        function playStoryEnd() {
+            const storyEndAudio = document.getElementById('storyEnd');
+            storyEndAudio.play();
+            
+            storyEndAudio.onended = function() {
+                showCompletionMessage();
+                
+                // Make AJAX call to mark story complete
+                fetch(`${window.location.pathname}/complete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(() => {
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("story.stories") }}';
+                    }, 3000);
+                });
+            };
         }
 
+        function showCompletionMessage() {
+            // Create and show completion overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'completion-overlay';
+            overlay.innerHTML = `
+                <div class="completion-message">
+                    <div class="green-tick">✓</div>
+                    <h2>Story Complete!</h2>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        
         function playAndNavigate(soundId, url) {
             playSound(soundId).then(() => {
                 window.location.href = url;

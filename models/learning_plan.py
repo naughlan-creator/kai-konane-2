@@ -5,12 +5,12 @@ class LearningPlan(db.Model):
     __tablename__ = 'learningPlan'
 
     id = db.Column(db.Integer, primary_key=True)
-    child_id = db.Column(db.Integer, db.ForeignKey('children.id'))
-    science_level = db.Column(db.Enum(Level, name='science_level'))
-    technology_level = db.Column(db.Enum(Level, name='technology_level'))
-    engineering_level = db.Column(db.Enum(Level, name='engineering_level'))
-    math_level = db.Column(db.Enum(Level, name='math_level'))
-    story_level = db.Column(db.Enum(Level, name='story_level'))
+    child_id = db.Column(db.Integer, db.ForeignKey('children.id'), nullable=False)
+    science_level = db.Column(db.Enum(Level, name='science_level'), nullable=False)
+    technology_level = db.Column(db.Enum(Level, name='technology_level'), nullable=False)
+    engineering_level = db.Column(db.Enum(Level, name='engineering_level'), nullable=False)
+    math_level = db.Column(db.Enum(Level, name='math_level'), nullable=False)
+    story_level = db.Column(db.Enum(Level, name='story_level'), nullable=False)
 
     child = db.relationship("Child", back_populates="learning_plan")
 

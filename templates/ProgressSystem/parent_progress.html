@@ -60,8 +60,8 @@
                         <tr>
                             <td>{{ child.firstname }} {{ child.lastname }}</td>
                             <td>{{ progress.learning_content.title }}</td>
-                            <td>{{ progress.completion_rate }}%</td>
                             <td>{{ progress.learning_content.type.value}}</td>
+                            <td>{{ progress.completion_rate }}%</td>
                             <td>{{ "Yes" if progress.completion_rate == 100 else "No" }}</td>
                         </tr>
                     {% endfor %}
