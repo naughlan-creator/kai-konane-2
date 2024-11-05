@@ -44,5 +44,8 @@ def complete_story(story_id):
     reward_content = f"Completed story: {story.title}"
     story_service.add_reward(story_id, current_user.id, reward_content)
     
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': True})
+    
     flash('Story completed!', 'success')
     return redirect(url_for('story.stories'))

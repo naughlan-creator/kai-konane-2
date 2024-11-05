@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,66 +7,159 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
-
 <body>
+
+    <style>
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+        }
+        
+        .scroll-indicator {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            animation: bounce 1s infinite;
+        }
+        
+        .scroll-up {
+            top: 70px;
+        }
+        
+        .scroll-down {
+            bottom: 70px;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-10px); }
+        }
+        
+        .main-content {
+            margin-top: 80px;
+            margin-bottom: 80px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        /* Arrow icons */
+        .scroll-indicator::before {
+            content: '';
+            width: 20px;
+            height: 20px;
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
+        
+        .scroll-up::before {
+            background-image: url('/static/icons/arrow-up.svg');
+        }
+        
+        .scroll-down::before {
+            background-image: url('/static/icons/arrow-down.svg');
+        }
+    </style>
+
+    <!-- Notification Component -->
     <div id="notification-container" class="notification-container" style="display: none;">
         <div class="notification-content">
             <p id="notification-message"></p>
             <button onclick="closeNotificationWithSound()">OK</button>
         </div>
-    </div>    
-
-    <div class="header">
-        <h1 class="title">Activities</h1>
-        <button onclick="fadeOutMusicAndNavigate('back', '{{ url_for('learning_content.learning_content') }}')"
-            class="logout-btn">Back to Learning Content</button>
     </div>
-    <div class="content">
-        <h2>Your Recommended Level: {{ recommended_level.name }}</h2>
+
+    <!-- Header Section -->
+    <header class="header header-{{ current_user.gender.lower() }}">
+        <h1 class="title">Activities</h1>
+        <button onclick="fadeOutMusicAndNavigate('back', '{{ url_for('learning_content.learning_content') }}')" 
+                class="logout-btn">Back to Learning Content</button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="recommended-level">
+            <h2>Your Recommended Level: {{ recommended_level.name }}</h2>
+        </div>
+
         <div class="activity-list">
             {% if activities %}
                 {% set current_level = namespace(value=None) %}
                 {% for activity in activities %}
                     {% if activity.level != current_level.value %}
                         {% if current_level.value %}
-                            </div>  <!-- Close previous level div -->
+                            </div>
                         {% endif %}
                         {% set current_level.value = activity.level %}
-                        <h3>{{ current_level.value.name }} Level Activities</h3>
-                        <div class="level-group">
+                        <section class="level-section">
+                            <h3>{{ current_level.value.name }} Level Activities</h3>
+                            <div class="level-group">
                     {% endif %}
-                    <div class="activity-item" data-stem-code="{{ activity.stem_code.name }}">
-                        {% if activity.cover_image %}
-                        <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" alt="{{ activity.title }}"
-                            class="activity-cover">
-                        {% else %}
-                        <div class="activity-cover placeholder">No Cover Image</div>
-                        {% endif %}
-                        <h4>{{ activity.title }}</h4>
-                        <div class="stem-code">{{ activity.stem_code.name }}</div>
-                        {% if activity.is_completed %}
-                        <div class="completion-text">Completed</div>
-                        {% else %}
-                        <div class="progress-circle" style="--progress: {{ activity.progress_value }}deg;">
-                            <span class="progress-text">{{ "%.0f"|format(activity.progress_value) }}%</span>
+
+                    <article class="activity-item" data-stem-code="{{ activity.stem_code.name }}">
+                        <div class="activity-image">
+                            {% if activity.cover_image %}
+                                <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" 
+                                     alt="{{ activity.title }}" class="activity-cover">
+                            {% else %}
+                                <div class="activity-cover placeholder">No Cover Image</div>
+                            {% endif %}
                         </div>
-                        {% endif %}
-                        <button
-                            onclick="fadeOutMusicAndNavigate('click', '{{ url_for('activity.start_activity', activity_id=activity.id) }}')"
-                            class="button">
-                            {% if activity.is_completed %}Retry Activity{% else %}Start Activity{% endif %}
-                        </button>
-                    </div>
+
+                        <div class="activity-details">
+                            <h4>{{ activity.title }}</h4>
+                            <div class="stem-code">{{ activity.stem_code.name }}</div>
+                            
+                            <div class="activity-progress">
+                                {% if activity.is_completed %}
+                                    <div class="completion-text">Completed</div>
+                                {% else %}
+                                    <div class="progress-circle" style="--progress: {{ activity.progress_value }}deg;">
+                                        <span class="progress-text">{{ "%.0f"|format(activity.progress_value) }}%</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <button onclick="fadeOutMusicAndNavigate('click', 
+                                    '{{ url_for('activity.start_activity', activity_id=activity.id) }}')" 
+                                    class="button">
+                                {% if activity.is_completed %}Retry Activity{% else %}Start Activity{% endif %}
+                            </button>
+                        </div>
+                    </article>
                 {% endfor %}
                 {% if current_level.value %}
-                    </div>  <!-- Close last level div -->
+                    </div>
+                    </section>
                 {% endif %}
             {% else %}
-                <p>No activities available at your current level. Please check back later or contact your teacher.</p>
+                <p class="no-activities">No activities available at your current level. Please check back later or contact your teacher.</p>
             {% endif %}
         </div>
-    </div>
-    <div class="footer"></div>
+    </main>
+
+    <footer class="footer footer-{{ current_user.gender.lower() }}"></footer>
 
     <script>
         let backgroundMusic;
@@ -90,7 +182,6 @@
             if (gainNode) {
                 gainNode.gain.setValueAtTime(gainNode.gain.value, audioManager.context.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0, audioManager.context.currentTime + duration / 1000);
-
                 setTimeout(() => {
                     if (backgroundMusic) {
                         backgroundMusic.stop();
@@ -100,11 +191,46 @@
             }
         }
 
+        function updateScrollIndicators() {
+            const content = document.querySelector('.main-content');
+            const scrollUp = document.querySelector('.scroll-up');
+            const scrollDown = document.querySelector('.scroll-down');
+            
+            // Show/hide scroll up indicator
+            if (content.scrollTop > 50) {
+                scrollUp.style.display = 'flex';
+            } else {
+                scrollUp.style.display = 'none';
+            }
+            
+            // Show/hide scroll down indicator
+            if (content.scrollHeight - content.scrollTop - content.clientHeight > 50) {
+                scrollDown.style.display = 'flex';
+            } else {
+                scrollDown.style.display = 'none';
+            }
+        }
+        
+        // Add scroll indicators to HTML
+        document.querySelector('main').insertAdjacentHTML('beforeend', `
+            <div class="scroll-indicator scroll-up">More activities above!</div>
+            <div class="scroll-indicator scroll-down">More activities below!</div>
+        `);
+        
+        // Update indicators on scroll and resize
+        document.querySelector('.main-content').addEventListener('scroll', updateScrollIndicators);
+        window.addEventListener('resize', updateScrollIndicators);
+        
+        // Initial check
+        document.addEventListener('DOMContentLoaded', () => {
+            updateScrollIndicators();
+        });
+
         function fadeOutMusicAndNavigate(soundId, url) {
             fadeOutMusic();
             setTimeout(() => {
                 playAndNavigate(soundId, url);
-            }, 1000); // Wait for 1 second before navigating
+            }, 1000);
         }
 
         function showNotification(message) {
@@ -112,15 +238,14 @@
             document.getElementById('notification-container').style.display = 'flex';
             playSound('error');
         }
-        
+
         function closeNotificationWithSound() {
             playSound('click').then(() => {
                 document.getElementById('notification-container').style.display = 'none';
             });
         }
-        
+
         document.addEventListener('DOMContentLoaded', function() {
-            // First, ensure all sounds are loaded
             const soundsToLoad = [
                 { id: 'activityMusic', url: '/static/sounds/activity_music.wav' },
                 { id: 'back', url: '/static/sounds/back.wav' },
@@ -129,12 +254,11 @@
             ];
 
             Promise.all(soundsToLoad.map(sound => audioManager.loadSound(sound.id, sound.url)))
-            .then(() => {
-                console.log('All sounds loaded successfully');
-                // Play the activity music
-                playLoopingActivityMusic();
-            })
-            .catch(error => console.error('Error loading sounds:', error));
+                .then(() => {
+                    console.log('All sounds loaded successfully');
+                    playLoopingActivityMusic();
+                })
+                .catch(error => console.error('Error loading sounds:', error));
 
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}

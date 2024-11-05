@@ -1,15 +1,18 @@
-from flask import session, Blueprint, request, jsonify, flash, render_template, redirect, url_for
+from flask import session, Blueprint, request, jsonify, flash, render_template, redirect, url_for, current_app
 from services.user_service import UserService
 from services.preschool_service import PreschoolService
 from services.teacher_service import TeacherService
+from services.learning_plan_service import LearningPlanService
 from models.user import User, Role
 from models.parent import Parent, EducationLevel
 from models.teacher import Teacher
 from models.child import Child, Level, LunchType
+from models.learning_plan import LearningPlan
 from level_predictor import predict_child_level
 from flask_login import login_user, logout_user, login_required, LoginManager, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import app, db
+
 
 user_bp = Blueprint('user', __name__, url_prefix='/users')
 
@@ -179,69 +182,96 @@ def parent_signup_3():
 @user_bp.route('/parent_signup_4', methods=['GET', 'POST'])
 def parent_signup_4():
     if 'parent_data' not in session or 'kids' not in session:
-        return redirect(url_for('user.parent_signup_1'), notification="Please start from the beginning.")
+        return redirect(url_for('user.parent_signup_1'))
 
     kids = session['kids']
     parent_data = session.get('parent_data', {})
-
     teacher_service = TeacherService(db)
     teachers = teacher_service.get_teachers()
 
     if request.method == 'POST':
-        parent = Parent(
-            firstname=parent_data.get('firstname', ''),
-            lastname=parent_data.get('lastname', ''),
-            username=parent_data.get('username', ''),
-            password=generate_password_hash(parent_data.get('password', '')),
-            email=parent_data.get('email', ''),
-            role=Role.PARENT,
-            education_level=EducationLevel(parent_data.get('education_level', '')),
-        )
-        db.session.add(parent)
-        db.session.flush()
-
-        for i in range(1, kids + 1):
-            lunch_type_value = request.form.get(f'child_lunch_{i}')
-            
-            if not lunch_type_value:
-                return render_template('UserManagement/parent_signup_4.html',
-                                       notification=f"Please fill in all fields for child {i}.")
-            
-            try:
-                lunch_type = LunchType(lunch_type_value)
-            except ValueError:
-                return redirect(url_for('user.parent_signup_4'), notification=f"Please fill in all fields for child {i}.")
-
-            child = Child(
-                firstname=request.form.get(f'child_name_{i}'),
-                lastname=parent.lastname,
-                age=request.form.get(f'child_age_{i}'),
-                gender=request.form.get(f'child_gender_{i}'),
-                parent_id=parent.id,
-                teacher_id=request.form.get(f'child_teacher_{i}'),
-                preschool_id=parent_data.get('preschool_id', ''),   
-                username=request.form.get(f'child_username_{i}'),
-                password=generate_password_hash(request.form.get(f'child_password_{i}')),
-                email=f"{request.form.get(f'child_username_{i}')}@gmail.com",
-                role=Role.CHILD,
-                race_ethnicity=request.form.get(f'child_race_{i}'),
-                lunch_type=lunch_type,
-                parent_education=EducationLevel(parent_data.get('education_level', '')),
-                recommended_level=Level.BEGINNER
+        try:
+            # Create parent
+            parent = Parent(
+                firstname=parent_data.get('firstname'),
+                lastname=parent_data.get('lastname'),
+                username=parent_data.get('username'),
+                password=generate_password_hash(parent_data.get('password')),
+                email=parent_data.get('email'),
+                role=Role.PARENT,
+                education_level=EducationLevel(parent_data.get('education_level'))
             )
-            db.session.add(child)
+            db.session.add(parent)
             db.session.flush()
 
-        db.session.commit()
+            # Track successful operations
+            success_log = []
+            
+            for i in range(1, kids + 1):
+                # Create child
+                child = Child(
+                    firstname=request.form[f'child_name_{i}'],
+                    lastname=parent.lastname,
+                    age=int(request.form[f'child_age_{i}']),
+                    gender=request.form[f'child_gender_{i}'],
+                    parent_id=parent.id,
+                    teacher_id=int(request.form[f'child_teacher_{i}']),
+                    preschool_id=parent_data.get('preschool_id'),
+                    username=request.form[f'child_username_{i}'],
+                    password=generate_password_hash(request.form[f'child_password_{i}']),
+                    email=f"{request.form[f'child_username_{i}']}@gmail.com",
+                    role=Role.CHILD,
+                    race_ethnicity=request.form[f'child_race_{i}'],
+                    lunch_type=LunchType(request.form[f'child_lunch_{i}']),
+                    parent_education=parent.education_level
+                )
+                db.session.add(child)
+                db.session.flush()
+                success_log.append(f"Created child: {child.firstname}")
 
-        # Clear session data
-        session.pop('kids', None)
-        session.pop('parent_data', None)
+                # Get ML prediction and create learning plan
+                predicted_level = predict_child_level(child.id)
+                level_mapping = {0: Level.BEGINNER, 1: Level.INTERMEDIATE, 2: Level.ADVANCED}
+                recommended_level = level_mapping.get(predicted_level, Level.BEGINNER)
+                
+                child.recommended_level = recommended_level
+                
+                learning_plan = LearningPlan(
+                    child_id=child.id,
+                    science_level=recommended_level,
+                    technology_level=recommended_level,
+                    engineering_level=recommended_level,
+                    math_level=recommended_level,
+                    story_level=recommended_level
+                )
+                db.session.add(learning_plan)
+                db.session.flush()
+                success_log.append(f"Created learning plan for: {child.firstname}")
 
-        flash("Signup successful!", "success")
-        return redirect(url_for('user.login'))
+            # Commit all changes
+            db.session.commit()
+            
+            # Log success
+            current_app.logger.info(f"Registration successful: {'; '.join(success_log)}")
+            
+            # Clear session and redirect
+            session.clear()
+            flash("Registration successful! Learning plans created for all children.", "success")
+            return redirect(url_for('user.login'))
 
-    return render_template('UserManagement/parent_signup_4.html', kids=kids, teachers=teachers, LunchType=LunchType)
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Registration error: {str(e)}")
+            return render_template('UserManagement/parent_signup_4.html',
+                                kids=kids,
+                                teachers=teachers,
+                                LunchType=LunchType,
+                                error="Registration failed. Please try again.")
+
+    return render_template('UserManagement/parent_signup_4.html',
+                         kids=kids,
+                         teachers=teachers,
+                         LunchType=LunchType)
 
 @user_bp.route('/teacher_signup_1', methods=['GET', 'POST'])
 def teacher_signup_1():

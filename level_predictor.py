@@ -22,17 +22,23 @@ def predict_child_level(child_id):
             raise ValueError("Model not loaded")
 
         query = """
-        SELECT c.age, c.gender, c.race_ethnicity, c.lunch_type, p.education_level as parent_education,
-        CASE 
-            WHEN a.stem_code IS NULL THEN 'UNKNOWN'
-            ELSE a.stem_code::text
-        END as stem_code
+        SELECT 
+            c.age, 
+            c.gender, 
+            c.race_ethnicity, 
+            c.lunch_type, 
+            p.education_level as parent_education,
+            CASE
+                WHEN a.stem_code IS NULL THEN 'UNKNOWN'
+                ELSE CAST(a.stem_code AS CHAR)
+            END as stem_code
         FROM children c
         JOIN parents p ON c.parent_id = p.id
         LEFT JOIN results r ON c.id = r.child_id
         LEFT JOIN activity a ON r.activity_id = a.id
         WHERE c.id = %s
         LIMIT 1
+
         """
 
         with app.app_context():
@@ -45,8 +51,7 @@ def predict_child_level(child_id):
         for col in required_columns:
             if col not in child_data.columns:
                 child_data[col] = 'UNKNOWN'
-
-        # Ensure data types match model expectations
+                
         child_data['age'] = child_data['age'].astype(int)
         categorical_columns = ['gender', 'race_ethnicity', 'lunch_type', 'parent_education', 'stem_code']
         child_data[categorical_columns] = child_data[categorical_columns].astype('category')

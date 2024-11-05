@@ -46,6 +46,16 @@
             padding: 10px 0;
             z-index: 999;
         }
+        .delete-button {
+            margin-left: 5px;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .delete-button:hover {
+            background-color: darkred !important;
+        }
     </style>
 </head>
 <body>
@@ -77,6 +87,9 @@
                     <td>{{ user.role.value }}</td>
                     <td>
                         <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="button edit-button" style="background-color: darkorchid">Edit</a>
+                        {% if user.role.value != 'ADMIN' %}
+                            <button onclick="confirmDelete({{ user.id }}, '{{ user.username }}')" class="button delete-button" style="background-color: crimson">Delete</button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -94,6 +107,16 @@
     <script>
         let adminMusicSource = null;
         let adminMusicGainNode = null;
+
+        function confirmDelete(userId, username) {
+            playSound('click');
+            if (confirm(`Are you sure you want to delete user "${username}"?`)) {
+                fadeOutAdminMusic().then(() => {
+                    window.location.href = `{{ url_for('admin.delete_user', user_id=0) }}`.replace('0', userId);
+                });
+            }
+        }
+        
     
         function playAdminMusic() {
             if (adminMusicSource) {

@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from models.user import Role
 from services.learning_plan_service import LearningPlanService
+from level_predictor import update_child_level
 from models.child import Child
 
 learning_plan_bp = Blueprint('learning_plan', __name__)
@@ -21,15 +22,31 @@ def create_learning_plan(child_id):
         return redirect(url_for('user.home'))
 
     if request.method == 'POST':
-        learning_plan = learning_plan_service.create_learning_plan(
-            child_id=child_id,
-            science_level=request.form['science_level'],
-            technology_level=request.form['technology_level'],
-            engineering_level=request.form['engineering_level'],
-            math_level=request.form['math_level'],
-            story_level=request.form['story_level']
-        )
-        flash("Learning plan created successfully")
+        # Get ML prediction
+        success, recommended_level = update_child_level(child_id)
+        
+        if success:
+            learning_plan = learning_plan_service.create_learning_plan(
+                child_id=child_id,
+                science_level=recommended_level,
+                technology_level=recommended_level,
+                engineering_level=recommended_level,
+                math_level=recommended_level,
+                story_level=recommended_level
+            )
+            flash("Learning plan created successfully with ML recommendations")
+        else:
+            # Fallback to form values if ML prediction fails
+            learning_plan = learning_plan_service.create_learning_plan(
+                child_id=child_id,
+                science_level=request.form['science_level'],
+                technology_level=request.form['technology_level'],
+                engineering_level=request.form['engineering_level'],
+                math_level=request.form['math_level'],
+                story_level=request.form['story_level']
+            )
+            flash("Learning plan created with manual settings")
+            
         return redirect(url_for('learning_plan.view_learning_plan', child_id=child_id))
 
     return render_template('LearningPlanSystem/create_learning_plan.html', child=child)

@@ -8,7 +8,66 @@
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
-    <div class="header">
+
+    <style>
+        .content {
+            background-image: url('/static/background_pictures/activity_page.jpg');
+            background-size: cover;
+            background-position: center;
+            min-height: 70vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        
+        .button-container {
+            display: flex;
+            gap: 30px;
+            z-index: 2;
+        }
+        
+        .button {
+            padding: 20px 40px;
+            font-size: 24px;
+            border-radius: 15px;
+            border: none;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3),
+                        0 4px 8px rgba(255, 255, 255, 0.1);
+        }
+        
+        @keyframes dance115 {
+            0%, 100% { 
+                transform: translateY(0) scale(1);
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+            }
+            50% { 
+                transform: translateY(-15px) scale(1.05);
+                box-shadow: 0 15px 25px rgba(0, 0, 0, 0.4);
+            }
+        }
+        
+        .dancing {
+            animation: dance115 0.522s infinite; /* 115 BPM = 0.522s per beat */
+        }
+        
+        .volume-icon {
+            width: 30px;
+            height: 30px;
+            background-image: url('/static/icons/volume-high.png');
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .volume-muted {
+            background-image: url('/static/icons/volume-muted.png');
+        }
+    </style>
+
+    <div class="header header-{{ current_user.gender.lower() }}">
         <h1 class="title">Learning Content</h1>
         <button onclick="fadeOutMusicAndNavigate('back', '{{ url_for('user.child_home') }}')" class="logout-btn">Back to Home</button>
     </div>
@@ -23,10 +82,61 @@
             <label for="volumeSlider">Volume</label>
         </div>
     </div>
-    <div class="footer"></div>
+    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
 
     <script>
         let backgroundMusic;
+        let dancingElements;
+        let isDancing = true;
+        let beatInterval;
+
+        function startDancing() {
+            const bpm = 115;
+            const beatDuration = (60 / bpm) * 1000;
+
+            dancingElements = document.querySelectorAll('.button');
+            
+            beatInterval = setInterval(() => {
+                if (isDancing) {
+                    dancingElements.forEach(element => {
+                        element.classList.add('dancing');
+                        setTimeout(() => {
+                            element.classList.remove('dancing');
+                        }, beatDuration / 2);
+                    });
+                }
+            }, beatDuration);
+        }
+
+        function updateDancing(volume) {
+            isDancing = volume > 0;
+            const volumeIcon = document.getElementById('volumeIcon');
+            volumeIcon.classList.toggle('volume-muted', !isDancing);
+        }
+
+        function playLoopingBackgroundMusic() {
+            audioManager.initializeContext();
+            backgroundMusic = audioManager.context.createBufferSource();
+            backgroundMusic.buffer = audioManager.sounds['activityMusic'];
+            backgroundMusic.loop = true;
+            backgroundMusic.connect(audioManager.masterGainNode);
+            backgroundMusic.start(0);
+            
+            startDancing();
+        }
+
+        // Update the volume slider container HTML
+        document.querySelector('.volume-slider-container').innerHTML = `
+        <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">
+        <div class="volume-icon" id="volumeIcon"></div>
+        `;
+
+        // Add cleanup
+        window.addEventListener('beforeunload', () => {
+        if (beatInterval) {
+            clearInterval(beatInterval);
+        }
+        });
 
         function playLoopingBackgroundMusic() {
             audioManager.initializeContext();

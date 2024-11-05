@@ -37,6 +37,38 @@ class LearningPlanService:
         db.session.add(learning_plan)
         db.session.commit()
         return learning_plan
+    
+    def create_initial_learning_plan(self, child_id):
+        from level_predictor import predict_child_level
+        
+        # Check if learning plan already exists
+        existing_plan = LearningPlan.query.filter_by(child_id=child_id).first()
+        if existing_plan:
+            return True
+            
+        predicted_level = predict_child_level(child_id)
+        if predicted_level is not None:
+            learning_plan = LearningPlan(
+                child_id=child_id,
+                science_level=predicted_level,
+                technology_level=predicted_level,
+                engineering_level=predicted_level,
+                math_level=predicted_level,
+                story_level=predicted_level
+            )
+            
+            # Explicitly set the child_id
+            learning_plan.child_id = child_id
+            
+            db.session.add(learning_plan)
+            try:
+                db.session.commit()
+                return True
+            except Exception as e:
+                db.session.rollback()
+                return False
+        return False
+
 
     def get_learning_plan(self, learning_plan_id):
         return LearningPlan.query.get(learning_plan_id)
@@ -53,7 +85,8 @@ class LearningPlanService:
             learning_plan.math_level = recommended_level
             learning_plan.story_level = recommended_level
             db.session.commit()
-        return learning_plan
+            return True
+        return False
     
     def update_learning_plan_from_activity(self, child_id, stem_code, score):
         learning_plan = self.get_learning_plan_by_child(child_id)

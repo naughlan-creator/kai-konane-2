@@ -6,6 +6,7 @@
     <title>{{ activity.title }} - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/voice-config.js') }}"></script>
 </head>
 <body>
     <audio id="correctAnswer" src="{{ url_for('static', filename='sounds/correct.wav') }}"></audio>
@@ -15,7 +16,7 @@
     <audio id="activityEnd" src="{{ url_for('static', filename='sounds/activity_end.wav') }}"></audio>
     <audio id="optionSelected" src="{{ url_for('static', filename='sounds/option_selected.wav') }}"></audio>
 
-    <div class="header">
+    <div class="header header-{{ current_user.gender.lower() }}">
         <h1 class="title">{{ activity.title }}</h1>
         <button onclick="location.href='{{ url_for('activity.activity_home') }}'" class="button back-btn">Back to Activities</button>
     </div>
@@ -37,30 +38,83 @@
         </div>
     </div>
     <script>
+        const synth = window.speechSynthesis;
         let currentQuestion = 0;
         const totalQuestions = {{ activity.questions|length }};
         const answers = {};
         let activityMusicPlaying = false;
-
+    
         function startActivityMusic() {
             if (!activityMusicPlaying) {
+                const music = document.getElementById('activityMusic');
+                music.volume = 0.3; // Set initial volume to 30%
+                music.loop = true;  // Ensure looping is enabled
                 playActivityMusic();
                 activityMusicPlaying = true;
+                
+                // Handle music restart when it ends (as a backup)
+                music.addEventListener('ended', function() {
+                    music.currentTime = 0;
+                    music.play();
+                });
             }
         }
-
+        
+    
         function stopActivityMusic() {
             const music = document.getElementById('activityMusic');
             music.pause();
             music.currentTime = 0;
             activityMusicPlaying = false;
         }
+    
+        function speak(text, onComplete) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = voiceConfig.voice;
+            utterance.rate = voiceConfig.rate;
+            utterance.pitch = voiceConfig.pitch;
+            utterance.volume = voiceConfig.volume;
+            utterance.lang = voiceConfig.lang;
+            
+            fadeBackgroundMusic(0.2);
+            
+            utterance.onend = () => {
+                fadeBackgroundMusic(1);
+                if (onComplete) onComplete();
+            };
+            
+            synth.speak(utterance);
 
+        }
+    
+        function fadeBackgroundMusic(targetVolume, duration = 500) {
+            const music = document.getElementById('activityMusic');
+            const steps = 20;
+            const stepTime = duration / steps;
+            const volumeStep = (targetVolume - music.volume) / steps;
+            
+            let currentStep = 0;
+            
+            const fadeInterval = setInterval(() => {
+                currentStep++;
+                music.volume = music.volume + volumeStep;
+                
+                if (currentStep >= steps) {
+                    clearInterval(fadeInterval);
+                    music.volume = targetVolume;
+                }
+            }, stepTime);
+        }
+    
         function showQuestion(index) {
             document.querySelectorAll('.question').forEach(q => q.style.display = 'none');
-            document.getElementById(`question-${index}`).style.display = 'block';
+            const questionElement = document.getElementById(`question-${index}`);
+            questionElement.style.display = 'block';
+            
+            const questionText = questionElement.querySelector('.question-content').textContent;
+            speak(questionText);
         }
-
+    
         function showNextQuestion() {
             if (currentQuestion < totalQuestions - 1) {
                 currentQuestion++;
@@ -69,29 +123,29 @@
                 submitActivity();
             }
         }
-
+    
         function selectAnswer(button, questionId, answerId, isCorrect) {
             playOptionSelected();
-
+    
             const container = button.closest('.answer-container');
             container.querySelectorAll('.answer-button').forEach(btn => btn.classList.remove('selected'));
             button.classList.add('selected');
             answers[questionId] = answerId;
-
-            // Disable all answer buttons after selection
+    
             container.querySelectorAll('.answer-button').forEach(btn => btn.disabled = true);
-
-            // Play correct or incorrect sound
-            if (isCorrect) {
-                playCorrectAnswer();
-            } else {
-                playIncorrectAnswer();
-            }
-
-            // Automatically move to the next question after a short delay
-            setTimeout(showNextQuestion, 1500);
+    
+            speak(button.textContent, () => {
+                setTimeout(() => {
+                    if (isCorrect) {
+                        playCorrectAnswer();
+                    } else {
+                        playIncorrectAnswer();
+                    }
+                    setTimeout(showNextQuestion, 1500);
+                }, 500);
+            });
         }
-
+    
         function submitActivity() {
             const form = document.createElement('form');
             form.method = 'POST';
@@ -104,21 +158,26 @@
                 input.value = answerId;
                 form.appendChild(input);
             }
-
+    
             document.body.appendChild(form);
             stopActivityMusic();
             playActivityEnd();
             setTimeout(() => form.submit(), 1500);
         }
-
-        // Start the activity music and play the start sound when the page loads
-        window.onload = function() {
+    
+        window.onload = async function() {
+            await initializeVoice();
             playActivityStart();
             setTimeout(() => {
                 startActivityMusic();
+                setTimeout(() => {
+                    const firstQuestion = document.querySelector('.question-content').textContent;
+                    speak(firstQuestion);
+                }, 1500);
             }, 1500);
         };
     </script>
-    <div class="footer"></div>
+    
+    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
 </body>
 </html>
