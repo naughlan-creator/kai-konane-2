@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teacher Profile - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -50,19 +51,6 @@
             color: #000000;
         }
     
-        .button {
-            background-color: #c60763;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 5px;
-        }
     
         .header {
             padding: 20px;
@@ -95,7 +83,7 @@
             <label for="lastname">Last Name:</label>
             <input type="text" id="lastname" name="lastname" value="{{ user.lastname }}" required>
 
-            <input type="submit" value="Update Profile" class="button" style="background-color: #4CAF50;">
+            <input type="submit" value="Update Profile" class="button">
         </form>
     </div>
     <div class="footer"></div>

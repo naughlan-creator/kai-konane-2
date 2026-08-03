@@ -1,13 +1,19 @@
 from models.reward import Reward
-from config import db
-from datetime import datetime
+from config import db as default_db
+from datetime import date
 
 class RewardService:
-    def __init__(self):
-        self.db = db
+    def __init__(self, db=None):
+        self.db = db or default_db
 
-    def add_reward(self, child_id, activity_id, content):
-        reward = Reward(child_id, activity_id, content)
+    def add_reward(self, child_id, content, activity_id=None, story_id=None):
+        reward = Reward(
+            child_id=child_id,
+            content=content,
+            activity_id=activity_id,
+            story_id=story_id,
+            date_acquired=date.today(),
+        )
         self.db.session.add(reward)
         self.db.session.commit()
         return reward
@@ -23,28 +29,25 @@ class RewardService:
         else:
             content = "Participation Badge"
 
-        # Create and save the reward
-        reward = Reward(
-            child_id=child_id,
-            activity_id=activity_id,
-            content=content,
-            dateAquired=datetime.utcnow()
-        )
-        db.session.add(reward)
-        db.session.commit()
-
+        # One badge of each grade per activity: retrying an activity should not
+        # print a fresh sticker every time.
+        reward = Reward.query.filter_by(child_id=child_id, activity_id=activity_id,
+                                        content=content).first()
+        if reward is None:
+            reward = self.add_reward(child_id=child_id, content=content,
+                                     activity_id=activity_id)
         return reward, f"You earned a {content}!"
 
     def get_reward(self, reward_id):
-        return Reward.query.get(reward_id)
-    
+        return self.db.session.get(Reward, reward_id)
+
     def get_rewards_by_child(self, child_id):
         return Reward.query.filter_by(child_id=child_id).all()
-    
+
     def get_rewards_by_activity(self, activity_id):
         return Reward.query.filter_by(activity_id=activity_id).all()
 
-    def get_rewards():
+    def get_rewards(self):
         return Reward.query.all()
 
     def update_reward(self, reward_id, new_content):

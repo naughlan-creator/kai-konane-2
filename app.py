@@ -1,40 +1,11 @@
 from flask import render_template
-from werkzeug.security import generate_password_hash
-from routes import *
 from config import app, db
+from routes import *
 from services import *
 from models import *
-import os
 
-@app.cli.command("create-admin")
-def create_admin():
-    with app.app_context():
-        existing_admin = User.query.filter_by(username='admin').first()
-        if existing_admin:
-            print("Admin user already exists.")
-        else:
-            admin = Admin(
-                username='admin',
-                password=generate_password_hash(os.environ.get('ADMIN_PASSWORD', '1234')),
-                email=os.environ.get('ADMIN_EMAIL', 'admin@example.com'),
-                name='Admin',
-                role=Role.ADMIN
-            )
-            db.session.add(admin)
-            db.session.commit()
-            print("Admin user created successfully.")
-
-@app.cli.command("init-db")
-def init_db():
-    db.create_all()
-    print("Database tables created.")
-
-@app.cli.command("reset-db")
-def reset_db():
-    with app.app_context():
-        db.drop_all()
-        db.create_all()
-        print("Database has been reset.")
+# Registers the `flask init-db`, `seed`, `check`, ... commands.
+import cli  # noqa: F401  (imported for its side effects)
 
 app.register_blueprint(user_bp)
 app.register_blueprint(admin_bp)
@@ -47,9 +18,23 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(learning_plan_bp)
 app.register_blueprint(progress_bp)
 
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/healthz')
+def healthz():
+    """Liveness probe: confirms the process is up and the database answers."""
+    from sqlalchemy import text
+    try:
+        db.session.execute(text('SELECT 1'))
+        return {'status': 'ok'}, 200
+    except Exception as e:
+        app.logger.error(f"Health check failed: {e}")
+        return {'status': 'error'}, 503
+
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,9 +1,9 @@
 from models.admin import Admin
-from config import db
+from config import db as default_db
 
 class AdministratorService:
-    def __init__(self):
-        self.db = db
+    def __init__(self, db=None):
+        self.db = db or default_db
 
     def add_admin(self, admin):
         self.db.session.add(admin)
@@ -13,15 +13,15 @@ class AdministratorService:
         return "Administrator not added!!!"
 
     def get_admin(self, admin_id):
-        return Admin.query.get(admin_id)
+        return self.db.session.get(Admin, admin_id)
 
-    def get_activities(self):
+    def get_admins(self):
         return Admin.query.all()
 
-    def update_admin(self, admin):
-        existing_admin = self.get_admin(admin.id)
+    def update_admin(self, admin_id, name):
+        existing_admin = self.get_admin(admin_id)
         if existing_admin:
-            existing_admin.name = admin.name
+            existing_admin.name = name
             self.db.session.commit()
             return "Administrator updated!!!"
         return "Administrator not updated!!!"

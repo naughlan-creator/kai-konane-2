@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Child Home - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -21,21 +22,6 @@
             box-sizing: border-box;
         }
         
-        .button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 20px 40px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 24px;
-            cursor: pointer;
-            border-radius: 5px;
-            transition: transform 0.2s;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3),
-                        0 4px 8px rgba(255, 255, 255, 0.1);
-        }
 
         @keyframes dance {
             0%, 100% { transform: translateY(0); }
@@ -64,24 +50,22 @@
             justify-content: center;
         }
         
-        .button {
-            transform-origin: center;
-            transition: transform 0.2s;
-        }
         
         
     </style>
 
-    <div class="header header-{{ current_user.gender.lower() }}">
-        <h1 class="title">Welcome, {{ current_user.username }}!</h1>
+    <div class="header header-{{ (current_user.gender or '')|lower }}">
+        <h1 class="title">Welcome, {{ current_user.firstname or current_user.username }}! 🌟</h1>
         <button onclick="fadeOutMusicAndNavigate('bye', '{{ url_for('user.logout') }}')" class="logout-btn">Logout</button>
     </div>
     <div class="content">
-        <div class="button-container">
-            <button onclick="fadeOutMusicAndNavigate('universalSuccess', '{{ url_for('learning_content.learning_content') }}')" class="button">Learning Content</button>
+        <div class="button-container tile-grid">
+            <button onclick="fadeOutMusicAndNavigate('universalSuccess', '{{ url_for('learning_content.learning_content') }}')" class="button tile tile--big tile--gold">
+                <span class="tile-icon">🚀</span>Let's Learn!
+            </button>
         </div>
     </div>
-    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
+    <div class="footer footer-{{ (current_user.gender or '')|lower }}"></div>
 
     <div class="volume-slider-container">
         <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">

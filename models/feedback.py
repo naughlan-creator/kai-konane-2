@@ -1,29 +1,34 @@
 from config import db
 from datetime import datetime
+
+
 class Feedback(db.Model):
     __tablename__ = 'feedbacks'
 
     id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    recipient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    subject = db.Column(db.String(50), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                          nullable=False, index=True)
+    recipient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                             nullable=False, index=True)
+    subject = db.Column(db.String(120), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    dateTime = db.Column(db.DateTime, default=datetime.utcnow)
-    isRead = db.Column(db.Boolean, default=False)
-    child_id = db.Column(db.Integer, db.ForeignKey('children.id'))
+    # Renamed from dateTime / isRead: everything else in the schema is snake_case.
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
+    child_id = db.Column(db.Integer, db.ForeignKey('children.id', ondelete='CASCADE'),
+                         index=True)
 
     sender = db.relationship('User', foreign_keys=[sender_id], back_populates='sent_feedbacks')
     recipient = db.relationship('User', foreign_keys=[recipient_id], back_populates='received_feedbacks')
     child = db.relationship('Child', foreign_keys=[child_id], back_populates='feedbacks')
 
-    __mapper_args__ = {
-        'polymorphic_identity': 'feedback',
-    }
-
-    def __init__(self, subject, message, sender_id, recipient_id, child_id=None):
+    def __init__(self, subject, message, sender_id, recipient_id, child_id=None, sent_at=None):
         self.subject = subject
         self.message = message
         self.sender_id = sender_id
         self.recipient_id = recipient_id
         self.child_id = child_id
+        self.sent_at = sent_at or datetime.utcnow()
 
+    def __repr__(self):
+        return f"<Feedback {self.id} {self.sender_id}->{self.recipient_id} {self.subject!r}>"

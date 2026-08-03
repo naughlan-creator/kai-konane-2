@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Read Feedback</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -28,14 +29,14 @@
         <div class="feedback-details">
             <p><strong>Subject:</strong> {{ feedback.subject }}</p>
             <p><strong>Sender:</strong> {{ feedback.sender.firstname }} {{ feedback.sender.lastname }}</p>
-            <p><strong>Date:</strong> {{ feedback.dateTime.strftime('%Y-%m-%d %H:%M') }}</p>
+            <p><strong>Date:</strong> {{ feedback.sent_at.strftime('%Y-%m-%d %H:%M') }}</p>
         </div>
         <div class="feedback-content">
             <p>{{ feedback.message }}</p>
         </div>
         <div class="button-container">
-            <a href="{{ url_for('feedback.past_feedback') }}" class="button" style="background-color: #FF5722;" onclick="playAndNavigate('back', this.href); return false;">Close Feedback</a>
-            <a href="{{ url_for('feedback.write_feedback', recipient_id=feedback.sender.id) }}" class="button" style="background-color: #4CAF50;" onclick="playAndNavigate('click', this.href); return false;">Respond</a>
+            <a href="{{ url_for('feedback.past_feedback') }}" class="button" onclick="playAndNavigate('back', this.href); return false;">Close Feedback</a>
+            <a href="{{ url_for('feedback.write_feedback', recipient_id=feedback.sender.id) }}" class="button" onclick="playAndNavigate('click', this.href); return false;">Respond</a>
         </div>
     </div>
     <div class="footer"></div>

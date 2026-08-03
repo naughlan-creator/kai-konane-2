@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preschools - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
     <style>
         .header, .footer {
@@ -53,10 +54,10 @@
                 <tr>
                     <td>{{ preschool.name }}</td>
                     <td>
-                        <a href="{{ url_for('preschool.view_preschool', preschool_id=preschool.id) }}" class="button" style="background-color: darkcyan" onclick="playAndNavigate('click', this.href); return false;">View</a>
-                        <a href="{{ url_for('preschool.edit_preschool', preschool_id=preschool.id) }}" class="button" style="background-color: darkorchid" onclick="playAndNavigate('click', this.href); return false;">Edit</a>
+                        <a href="{{ url_for('preschool.view_preschool', preschool_id=preschool.id) }}" class="button" onclick="playAndNavigate('click', this.href); return false;">View</a>
+                        <a href="{{ url_for('preschool.edit_preschool', preschool_id=preschool.id) }}" class="button" onclick="playAndNavigate('click', this.href); return false;">Edit</a>
                         <form action="{{ url_for('preschool.delete_preschool', preschool_id=preschool.id) }}" method="post" style="display: inline;">
-                            <button type="submit" class="button" onclick="return confirmDelete(event)" style="background-color: darkred;">Delete</button>
+                            <button type="submit" class="button" onclick="return confirmDelete(event)">Delete</button>
                         </form>
                     </td>
                 </tr>

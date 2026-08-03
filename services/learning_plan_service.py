@@ -2,122 +2,128 @@ from models.learning_plan import LearningPlan
 from models.activity import Activity, StemCode
 from models.child import Child, Level
 from models.story import Story
-from config import db
-from level_predictor import update_child_level
+from config import db as default_db
+
+# Every field on a learning plan, in the order the forms present them.
+PLAN_FIELDS = ('science_level', 'technology_level', 'engineering_level',
+               'math_level', 'story_level')
+
 
 class LearningPlanService:
-    def __init__(self):
-        self.db = db
+    def __init__(self, db=None):
+        self.db = db or default_db
 
-    def create_learning_plan(self, child_id, science_level, technology_level, engineering_level, math_level, story_level):
-        # First, update the child's level using the ML model
-        success, recommended_level = update_child_level(child_id)
+    def create_learning_plan(self, child_id, science_level, technology_level,
+                             engineering_level, math_level, story_level):
+        """Create (or replace) a child's learning plan from explicit levels.
 
-        if success:
-            # Use the recommended level from the ML model
-            learning_plan = LearningPlan(
-                child_id=child_id,
-                science_level=recommended_level,
-                technology_level=recommended_level,
-                engineering_level=recommended_level,
-                math_level=recommended_level,
-                story_level=recommended_level
-            )
+        The caller decides where the levels come from -- an ML recommendation or
+        a teacher's form. This method no longer re-runs the predictor and throws
+        the caller's arguments away.
+        """
+        levels = {
+            'science_level': Level.coerce(science_level, Level.BEGINNER),
+            'technology_level': Level.coerce(technology_level, Level.BEGINNER),
+            'engineering_level': Level.coerce(engineering_level, Level.BEGINNER),
+            'math_level': Level.coerce(math_level, Level.BEGINNER),
+            'story_level': Level.coerce(story_level, Level.BEGINNER),
+        }
+
+        # A child has exactly one plan (Child.learning_plan is uselist=False), so
+        # update in place instead of inserting a second orphaned row.
+        learning_plan = self.get_learning_plan_by_child(child_id)
+        if learning_plan is None:
+            learning_plan = LearningPlan(child_id=child_id, **levels)
+            self.db.session.add(learning_plan)
         else:
-            # If ML prediction fails, use the levels provided by the teacher
-            learning_plan = LearningPlan(
-                child_id=child_id,
-                science_level=science_level,
-                technology_level=technology_level,
-                engineering_level=engineering_level,
-                math_level=math_level,
-                story_level=story_level
-            )
+            for field, level in levels.items():
+                setattr(learning_plan, field, level)
 
-        db.session.add(learning_plan)
-        db.session.commit()
+        self.db.session.commit()
         return learning_plan
-    
-    def create_initial_learning_plan(self, child_id):
-        from level_predictor import predict_child_level
-        
-        # Check if learning plan already exists
-        existing_plan = LearningPlan.query.filter_by(child_id=child_id).first()
-        if existing_plan:
-            return True
-            
-        predicted_level = predict_child_level(child_id)
-        if predicted_level is not None:
-            learning_plan = LearningPlan(
-                child_id=child_id,
-                science_level=predicted_level,
-                technology_level=predicted_level,
-                engineering_level=predicted_level,
-                math_level=predicted_level,
-                story_level=predicted_level
-            )
-            
-            # Explicitly set the child_id
-            learning_plan.child_id = child_id
-            
-            db.session.add(learning_plan)
-            try:
-                db.session.commit()
-                return True
-            except Exception as e:
-                db.session.rollback()
-                return False
-        return False
 
+    def create_initial_learning_plan(self, child_id):
+        """Give a newly registered child a plan based on the level model."""
+        from level_predictor import predict_child_level
+
+        if self.get_learning_plan_by_child(child_id) is not None:
+            return True
+
+        predicted_level = predict_child_level(child_id) or Level.BEGINNER
+
+        try:
+            self.create_learning_plan(
+                child_id,
+                predicted_level, predicted_level, predicted_level,
+                predicted_level, predicted_level,
+            )
+            return True
+        except Exception:
+            self.db.session.rollback()
+            return False
 
     def get_learning_plan(self, learning_plan_id):
-        return LearningPlan.query.get(learning_plan_id)
+        return self.db.session.get(LearningPlan, learning_plan_id)
 
     def get_learning_plan_by_child(self, child_id):
         return LearningPlan.query.filter_by(child_id=child_id).first()
 
     def update_learning_plan_from_recommendation(self, child_id, recommended_level):
         learning_plan = self.get_learning_plan_by_child(child_id)
-        if learning_plan:
-            learning_plan.science_level = recommended_level
-            learning_plan.technology_level = recommended_level
-            learning_plan.engineering_level = recommended_level
-            learning_plan.math_level = recommended_level
-            learning_plan.story_level = recommended_level
-            db.session.commit()
-            return True
-        return False
-    
-    def update_learning_plan_from_activity(self, child_id, stem_code, score):
-        learning_plan = self.get_learning_plan_by_child(child_id)
         if not learning_plan:
+            return False
+
+        level = Level.coerce(recommended_level)
+        if level is None:
+            return False
+
+        for field in PLAN_FIELDS:
+            setattr(learning_plan, field, level)
+        self.db.session.commit()
+        return True
+
+    def update_learning_plan_from_activity(self, child_id, stem_code, score):
+        """Move one STEM strand up or down after an activity is submitted."""
+        learning_plan = self.get_learning_plan_by_child(child_id)
+        if not learning_plan or stem_code is None:
             return None
 
-        current_level = getattr(learning_plan, f"{stem_code.lower()}_level")
-        
-        if score >= 90 and current_level != Level.ADVANCED:
-            new_level = Level(min(current_level.value + 1, Level.ADVANCED.value))
-        elif score < 60 and current_level != Level.BEGINNER:
-            new_level = Level(max(current_level.value - 1, Level.BEGINNER.value))
+        # stem_code arrives as a StemCode enum; LearningPlan.get_level knows how
+        # to map either an enum or a string onto the right column.
+        current_level = learning_plan.get_level(stem_code)
+        if current_level is None:
+            return None
+
+        # Levels are strings, so step through the ordered list -- never do
+        # arithmetic on Level.value.
+        if score >= 90:
+            new_level = current_level.shifted(1)
+        elif score < 60:
+            new_level = current_level.shifted(-1)
         else:
             new_level = current_level
 
-        setattr(learning_plan, f"{stem_code.lower()}_level", new_level)
-        db.session.commit()
+        learning_plan.set_level(stem_code, new_level)
+        self.db.session.commit()
 
         return learning_plan
-    
-    def update_learning_plan(self, learning_plan_id, science_level, technology_level, engineering_level, math_level, story_level):
-        learning_plan = LearningPlan.query.get(learning_plan_id)
-        if learning_plan:
-            learning_plan.science_level = Level[science_level.upper()]
-            learning_plan.technology_level = Level[technology_level.upper()]
-            learning_plan.engineering_level = Level[engineering_level.upper()]
-            learning_plan.math_level = Level[math_level.upper()]
-            learning_plan.story_level = Level[story_level.upper()]
-            db.session.commit()
-            return learning_plan
-        return None
+
+    def update_learning_plan(self, learning_plan_id, science_level, technology_level,
+                             engineering_level, math_level, story_level):
+        learning_plan = self.get_learning_plan(learning_plan_id)
+        if not learning_plan:
+            return None
+
+        submitted = (science_level, technology_level, engineering_level,
+                     math_level, story_level)
+        for field, value in zip(PLAN_FIELDS, submitted):
+            level = Level.coerce(value, getattr(learning_plan, field))
+            if level is None:
+                return None
+            setattr(learning_plan, field, level)
+
+        self.db.session.commit()
+        return learning_plan
 
     def delete_learning_plan(self, learning_plan_id):
         learning_plan = self.get_learning_plan(learning_plan_id)
@@ -128,18 +134,27 @@ class LearningPlanService:
         return False
 
     def recommend_activities(self, child_id):
+        """Content at or below the child's level for each strand."""
         learning_plan = self.get_learning_plan_by_child(child_id)
         if not learning_plan:
             return []
 
-        recommended_activities = []
+        recommended = []
         for stem_code in StemCode:
-            level = getattr(learning_plan, f"{stem_code.name.lower()}_level")
-            activities = Activity.query.filter_by(stem_code=stem_code, level=level).order_by(Activity.id).all()
-            recommended_activities.extend(activities)
+            level = learning_plan.get_level(stem_code)
+            if level is None:
+                continue
+            allowed = [candidate for candidate in Level if candidate.rank <= level.rank]
+            recommended.extend(
+                Activity.query
+                .filter(Activity.stem_code == stem_code, Activity.level.in_(allowed))
+                .all()
+            )
 
-        # Add story recommendations
-        stories = Story.query.filter_by(level=learning_plan.story_level).order_by(Story.id).all()
-        recommended_activities.extend(stories)
+        if learning_plan.story_level is not None:
+            allowed = [c for c in Level if c.rank <= learning_plan.story_level.rank]
+            recommended.extend(Story.query.filter(Story.level.in_(allowed)).all())
 
-        return sorted(recommended_activities, key=lambda x: (x.level.value, x.id))
+        # Sort by difficulty. Sorting on level.value would order these
+        # alphabetically: ADVANCED, BEGINNER, INTERMEDIATE.
+        return sorted(recommended, key=lambda item: (item.level.rank, item.id))

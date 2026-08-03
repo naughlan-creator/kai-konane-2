@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parent Home - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 
     <style>
@@ -24,11 +25,19 @@
         <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
     </div>
     <div class="content">
-        <div class="button-container">
-            <button data-href="{{ url_for('feedback.feedback_home') }}" class="button" style="background-color: #42A5F5;">Feedback</button>
-            <button data-href="{{ url_for('user.view_children') }}" class="button" style="background-color: #00897B;">View My Children</button>
-            <button data-href="{{ url_for('progress.parent_progress') }}" class="button" style="background-color: #66BB6A;">Check Progress</button>
-            <button data-href="{{ url_for('progress.parent_results') }}" class="button" style="background-color: #FFA726;">Check Results</button>
+        <div class="button-container tile-grid">
+            <button data-href="{{ url_for('user.view_children') }}" class="button tile tile--teal">
+                <span class="tile-icon">🧒</span>My Children
+            </button>
+            <button data-href="{{ url_for('progress.parent_progress') }}" class="button tile tile--green">
+                <span class="tile-icon">📈</span>Check Progress
+            </button>
+            <button data-href="{{ url_for('progress.parent_results') }}" class="button tile tile--gold">
+                <span class="tile-icon">🏅</span>Check Results
+            </button>
+            <button data-href="{{ url_for('feedback.feedback_home') }}" class="button tile tile--blue">
+                <span class="tile-icon">💬</span>Feedback
+            </button>
         </div>
     </div>
     <div class="footer"></div>

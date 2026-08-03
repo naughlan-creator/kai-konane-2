@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ story.title }} - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
     <script src="{{ url_for('static', filename='js/voice-config.js') }}"></script>
     <style>
@@ -128,10 +129,6 @@
             font-size: 1.5rem;
             margin: 0;
         }
-        .button {
-            padding: 8px 15px;
-            font-size: 0.9rem;
-        }
 
         #pause-btn {
             background-color: #ff4444;
@@ -168,7 +165,7 @@
     <audio id="storyEnd" src="{{ url_for('static', filename='sounds/story_end.wav') }}"></audio>
     <audio id="switchPage" src="{{ url_for('static', filename='sounds/switch_page.wav') }}"></audio>
 
-    <div class="header header-{{ current_user.gender.lower() }}">
+    <div class="header header-{{ (current_user.gender or '')|lower }}">
         <h1 class="title">{{ story.title }}</h1>
         <button onclick="playAndNavigate('back', '{{ url_for('story.stories') }}')" class="button back-btn">Back to Stories</button>
     </div>
@@ -177,7 +174,10 @@
             {% for page in story.pages %}
             <div class="story-page" id="page-{{ loop.index0 }}" style="display: {% if loop.index0 == 0 %}flex{% else %}none{% endif %};">
                 <div class="story-image-container">
+                    {# image_filename is optional; concatenating None crashed the page. #}
+                    {% if page.image_filename %}
                     <img src="{{ url_for('static', filename='images/' + page.image_filename) }}" alt="Page {{ loop.index }} image" class="story-image">
+                    {% endif %}
                 </div>
                 <p class="story-text">{{ page.line_of_page }}</p>
             </div>
@@ -192,7 +192,7 @@
             </form>
         </div>
     </div>
-    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
+    <div class="footer footer-{{ (current_user.gender or '')|lower }}"></div>
 
     <script>
         let currentPage = 0;

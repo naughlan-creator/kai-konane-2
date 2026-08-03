@@ -4,11 +4,30 @@ from services.child_service import ChildService
 from services.parent_service import ParentService
 from services.administrator_service import AdministratorService
 from services.preschool_service import PreschoolService
-#from services.feedback_service import FeedbackService
-#from services.page_service import PageService
-#from services.learning_plan_service import LearningPlanService
-#from services.reward_service import RewardService
-#from services.progress_service import ProgressService
-#from services.activity_service import ActivityService
-#from services.story_service import StoryService
-#from services.result_service import ResultService
+from services.feedback_service import FeedbackService
+from services.page_service import PageService
+from services.learning_plan_service import LearningPlanService
+from services.reward_service import RewardService
+from services.progress_service import ProgressService
+from services.activity_service import ActivityService
+from services.story_service import StoryService
+from services.result_service import ResultService
+from services import media
+
+__all__ = [
+    'media',
+    'UserService',
+    'TeacherService',
+    'ChildService',
+    'ParentService',
+    'AdministratorService',
+    'PreschoolService',
+    'FeedbackService',
+    'PageService',
+    'LearningPlanService',
+    'RewardService',
+    'ProgressService',
+    'ActivityService',
+    'StoryService',
+    'ResultService',
+]
