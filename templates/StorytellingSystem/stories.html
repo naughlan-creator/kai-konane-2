@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stories - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 
@@ -66,7 +67,7 @@
         }
     </style>
 
-    <div class="header header-{{ current_user.gender.lower() }}">
+    <div class="header header-{{ (current_user.gender or '')|lower }}">
         <h1 class="title">Stories</h1>
         <button onclick="playAndNavigate('{{ url_for('learning_content.learning_content') }}')" class="button back-btn">Back to Learning Content</button>
     </div>
@@ -94,7 +95,7 @@
             {% endfor %}
         </div>
     </div>
-    <div class="footer footer-{{ current_user.gender.lower() }}"></div>
+    <div class="footer footer-{{ (current_user.gender or '')|lower }}"></div>
 
     <div class="volume-slider-container">
         <input type="range" min="0" max="100" value="100" class="volume-slider" id="volumeSlider" orient="vertical">

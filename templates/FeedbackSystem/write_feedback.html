@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Write Feedback</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -41,8 +42,8 @@
                 </select>
             </div>
             <div class="button-container">
-                <a href="{{ url_for('feedback.feedback_home') }}" class="button" style="background-color: #FF5722;" onclick="playAndNavigate('back', this.href); return false;">Cancel</a>
-                <button type="submit" class="button" style="background-color: #4CAF50;">Send</button>
+                <a href="{{ url_for('feedback.feedback_home') }}" class="button" onclick="playAndNavigate('back', this.href); return false;">Cancel</a>
+                <button type="submit" class="button">Send</button>
             </div>
         </form>
     </div>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ activity.title }} - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
 </head>
 <body>
     <div class="header">
@@ -12,7 +13,9 @@
         <button onclick="location.href='{{ url_for('activity.activity_home') }}'" class="button back-btn">Back to Activities</button>
     </div>
     <div class="content">
+        {% if activity.cover_image %}
         <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" alt="{{ activity.title }} cover" class="activity-cover">
+        {% endif %}
         <div id="question-container">
             {% for question in activity.questions %}
             <div class="question" id="question-{{ loop.index0 }}" style="display: {% if loop.first %}block{% else %}none{% endif %};">

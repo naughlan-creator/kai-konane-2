@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign Up</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -23,12 +24,16 @@
             </div>
         </div>        
 
-        <div class="button-container">
-            <button onclick="playOptionSelectedAndNavigate('{{ url_for('user.parent_signup_1') }}')" class="button" style="background-color: darkcyan;">Parent</button>
-            <button onclick="playOptionSelectedAndNavigate('{{ url_for('user.teacher_signup_1') }}')" class="button" style="background-color: darkmagenta">Teacher</button>
+        <div class="button-container tile-grid">
+            <button onclick="playOptionSelectedAndNavigate('{{ url_for('user.parent_signup_1') }}')" class="button tile tile--big tile--teal">
+                <span class="tile-icon">👪</span>I'm a Parent
+            </button>
+            <button onclick="playOptionSelectedAndNavigate('{{ url_for('user.teacher_signup_1') }}')" class="button tile tile--big tile--violet">
+                <span class="tile-icon">🍎</span>I'm a Teacher
+            </button>
         </div>
         <div class="button-container">
-            <button type="button" class="button" onclick="playBackAndNavigate('{{ url_for('index') }}')">Back</button>
+            <button type="button" class="back-btn" onclick="playBackAndNavigate('{{ url_for('index') }}')">Back</button>
         </div>
     </div>
 

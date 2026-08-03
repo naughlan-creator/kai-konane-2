@@ -1,9 +1,9 @@
 from models.child import Child
-from config import db
+from config import db as default_db
 
 class ChildService:
-    def __init__(self):
-        self.db = db
+    def __init__(self, db=None):
+        self.db = db or default_db
 
     def add_child(self, child):
         self.db.session.add(child)
@@ -13,18 +13,23 @@ class ChildService:
         return "Child not added!!!"
 
     def get_child(self, child_id):
-        return Child.query.get(child_id)
+        return self.db.session.get(Child, child_id)
 
     def get_children(self):
         return Child.query.all()
 
-    def update_child(self, child):
-        existing_child = self.get_child(child.id)
-        if existing_child:
-            existing_child.name = child.name
-            self.db.session.commit()
-            return "Child updated!!!"
-        return "Child not updated!!!"
+    def update_child(self, child_id, firstname=None, lastname=None, age=None):
+        existing_child = self.get_child(child_id)
+        if not existing_child:
+            return "Child not updated!!!"
+        if firstname:
+            existing_child.firstname = firstname
+        if lastname:
+            existing_child.lastname = lastname
+        if age is not None:
+            existing_child.age = int(age)
+        self.db.session.commit()
+        return "Child updated!!!"
 
     def delete_child(self, child_id):
         child = self.get_child(child_id)

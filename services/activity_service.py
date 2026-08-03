@@ -1,220 +1,318 @@
-import os
-from werkzeug.utils import secure_filename
-from models.activity import Activity, StemCode, Level
+from models.activity import Activity, StemCode
+from models.child import Level
 from services.learning_plan_service import LearningPlanService
+from services.media import resolve_image
 from models.question import Question
 from models.answer import Answer
 from models.result import Result
 from models.reward import Reward
 from models.progress import Progress
-from config import db
+from config import db as default_db
+
+
+class ActivityError(ValueError):
+    """Raised when submitted activity content is not usable."""
+
 
 class ActivityService:
-    def __init__(self):
-        self.db = db
-        self.UPLOAD_FOLDER = os.path.join('static', 'images')
-        self.learning_plan_service = LearningPlanService()
+    def __init__(self, db=None):
+        self.db = db or default_db
+        self.learning_plan_service = LearningPlanService(self.db)
 
-    def add_activity(self, title, stem_code, level, cover_image, questions_data):
+    # ---------------------------------------------------------------- authoring
+
+    @staticmethod
+    def _validate(title, stem_code, level, questions_data):
+        """Check an activity before touching the database.
+
+        Validating up front means a bad submission never leaves a half-written
+        activity behind.
+        """
+        if not (title or '').strip():
+            raise ActivityError("An activity needs a title")
+
+        code = StemCode.coerce(stem_code)
+        if code is None:
+            raise ActivityError("Choose a valid STEM subject")
+
+        activity_level = Level.coerce(level)
+        if activity_level is None:
+            raise ActivityError("Choose a valid level")
+
+        cleaned = []
+        for index, question_data in enumerate(questions_data or [], start=1):
+            content = (question_data.get('content') or '').strip()
+            if not content:
+                raise ActivityError(f"Question {index} is missing its text")
+
+            answers = []
+            for answer_data in question_data.get('answers') or []:
+                answer_content = (answer_data.get('content') or '').strip()
+                if not answer_content:
+                    continue
+                answers.append({
+                    'id': answer_data.get('id'),
+                    'content': answer_content,
+                    'is_correct': bool(answer_data.get('is_correct')),
+                })
+
+            if len(answers) < 2:
+                raise ActivityError(f"Question {index} needs at least two answers")
+            correct = [a for a in answers if a['is_correct']]
+            if len(correct) != 1:
+                raise ActivityError(
+                    f"Question {index} needs exactly one answer marked correct")
+
+            cleaned.append({
+                'id': question_data.get('id'),
+                'content': content,
+                'answers': answers,
+            })
+
+        if not cleaned:
+            raise ActivityError("An activity needs at least one question")
+
+        return code, activity_level, cleaned
+
+    def add_activity(self, title, stem_code, level, cover_image, questions_data,
+                     description=None, existing_cover=None):
         try:
-            cover_filename = self._save_image(cover_image)
+            code, activity_level, questions = self._validate(
+                title, stem_code, level, questions_data)
+        except ActivityError as e:
+            return f"Activity not added!!! {e}"
+
+        try:
             activity = Activity(
-                title=title,
-                stem_code=stem_code,
-                level=level,
-                cover_image=cover_filename
+                title=title.strip(),
+                description=(description or '').strip() or None,
+                stem_code=code,
+                level=activity_level,
+                cover_image=resolve_image(cover_image, existing_cover),
             )
 
-            for question_data in questions_data:
-                question_content = question_data.get('content')
-                answer_data = question_data.get('answers')
-
-                question = Question(content=question_content)
-
-                for answer_data in answer_data:
-                    answer_content = answer_data.get('content')
-                    is_correct = answer_data.get('is_correct')
-                    answer = Answer(content=answer_content, is_correct=is_correct)
-                    question.answers.append(answer)
-
+            for position, question_data in enumerate(questions, start=1):
+                question = Question(content=question_data['content'], position=position)
+                for answer_position, answer_data in enumerate(question_data['answers'], start=1):
+                    question.answers.append(Answer(
+                        content=answer_data['content'],
+                        is_correct=answer_data['is_correct'],
+                        position=answer_position,
+                    ))
                 activity.questions.append(question)
 
             self.db.session.add(activity)
             self.db.session.commit()
             return "Activity added!!!"
-        
         except Exception as e:
             self.db.session.rollback()
-            return f"Activity not added!!! Error: {str(e)}"
+            return f"Activity not added!!! Error: {e}"
 
-    def get_activity(self, activity_id):
-        activity = Activity.query.filter_by(id=activity_id).first()
-        if activity:
-            return activity
-        return None
-
-    def get_activities(self):
-        return Activity.query.all()
-
-    def update_activity(self, activity_id, title=None, stem_code=None, level=None, cover_image=None, questions_data=None):
+    def update_activity(self, activity_id, title=None, stem_code=None, level=None,
+                        cover_image=None, questions_data=None, description=None,
+                        existing_cover=None):
         activity = self.get_activity(activity_id)
         if not activity:
-            return f"Activity not found!!!"
-        
-        if title:
-            activity.title = title
-        if stem_code:
-            activity.stem_code = StemCode[stem_code.upper()]
-        if level:
-            activity.level = Level[level.upper()]
-        if cover_image:
-            activity.cover_image = self._save_image(cover_image)
+            return "Activity not found!!!"
 
-        if questions_data:
-            for question_data in questions_data:
-                question_id = question_data.get('id')
-                question = Question.query.filter_by(id=question_id).first()
-                
-                if question:
-                    question.content = question_data.get('content')
-                    answers_data = question_data.get('answers')
+        try:
+            code, activity_level, questions = self._validate(
+                title or activity.title,
+                stem_code or activity.stem_code,
+                level or activity.level,
+                questions_data)
+        except ActivityError as e:
+            return f"Activity not updated!!! {e}"
 
-                    for answer_data in answers_data:
-                        answer_id = answer_data.get('id')
-                        answer = Answer.query.filter_by(id=answer_id).first()
-                        if answer:
-                            answer.content = answer_data.get('content')
-                            answer.is_correct = answer_data.get('is_correct')
-                        else:
-                            new_answer = Answer(content=answer_data.get('content'), is_correct=answer_data.get('is_correct'))
-                            question.answers.append(new_answer)
-                else:
-                    new_question = Question(content=question_data.get('content'))
-                    answers_data = question_data.get('answers')
+        try:
+            activity.title = (title or activity.title).strip()
+            if description is not None:
+                activity.description = description.strip() or None
+            activity.stem_code = code
+            activity.level = activity_level
+            activity.cover_image = resolve_image(cover_image, existing_cover,
+                                                 activity.cover_image)
 
-                    for answer_data in answers_data:
-                        new_answer = Answer(content=answer_data.get('content'), is_correct=answer_data.get('is_correct'))
-                        new_question.answers.append(new_answer)
-                    activity.questions.append(new_question)
+            self._sync_questions(activity, questions)
 
-        self.db.session.commit()
-        return "Activity updated!!!"
-    
-    def _save_image(self, image):
-        if image:
-            filename = secure_filename(image.filename)
-            image.save(os.path.join(self.UPLOAD_FOLDER, filename))
-            return filename
-        return None
+            self.db.session.commit()
+            return "Activity updated!!!"
+        except Exception as e:
+            self.db.session.rollback()
+            return f"Activity not updated!!! Error: {e}"
+
+    def _sync_questions(self, activity, questions):
+        """Make the stored questions match the submitted ones exactly.
+
+        Rows the author kept are updated in place (so results stay meaningful),
+        rows they added are created, and rows they removed are deleted. The old
+        version could only ever append, so each save duplicated the question set.
+        """
+        existing = {question.id: question for question in activity.questions}
+        keep = set()
+
+        for position, question_data in enumerate(questions, start=1):
+            question = existing.get(_as_int(question_data.get('id')))
+            if question is None:
+                question = Question(content=question_data['content'], position=position)
+                activity.questions.append(question)
+            else:
+                question.content = question_data['content']
+                question.position = position
+                keep.add(question.id)
+
+            self._sync_answers(question, question_data['answers'])
+
+        for question in list(activity.questions):
+            if question.id is not None and question.id not in keep:
+                activity.questions.remove(question)
+
+    @staticmethod
+    def _sync_answers(question, answers):
+        existing = {answer.id: answer for answer in question.answers}
+        keep = set()
+
+        for position, answer_data in enumerate(answers, start=1):
+            answer = existing.get(_as_int(answer_data.get('id')))
+            if answer is None:
+                question.answers.append(Answer(
+                    content=answer_data['content'],
+                    is_correct=answer_data['is_correct'],
+                    position=position,
+                ))
+            else:
+                answer.content = answer_data['content']
+                answer.is_correct = answer_data['is_correct']
+                answer.position = position
+                keep.add(answer.id)
+
+        for answer in list(question.answers):
+            if answer.id is not None and answer.id not in keep:
+                question.answers.remove(answer)
 
     def delete_activity(self, activity_id):
         activity = self.get_activity(activity_id)
         if not activity:
-            return f"Activity not found!!!"
+            return "Activity not found!!!"
 
+        # Progress, results and rewards all cascade from the model definitions
+        # now, so there is nothing to clear by hand.
         self.db.session.delete(activity)
         self.db.session.commit()
         return "Activity deleted!!!"
-    
+
+    # ------------------------------------------------------------------ reading
+
+    def get_activity(self, activity_id):
+        return self.db.session.get(Activity, activity_id)
+
+    def get_activities(self):
+        return Activity.query.order_by(Activity.id).all()
+
+    def get_activities_for_level(self, stem_code, level):
+        """Activities in one strand at or below a level."""
+        allowed = [candidate for candidate in Level if candidate.rank <= level.rank]
+        return (Activity.query
+                .filter(Activity.stem_code == stem_code, Activity.level.in_(allowed))
+                .order_by(Activity.level, Activity.id)
+                .all())
+
+    # ----------------------------------------------------------- doing activities
+
     def get_activity_progress(self, activity_id, child_id):
-        progress = Progress.query.filter_by(child_id=child_id, learning_content_id=activity_id).first()
-        if progress:
-            return progress.completion_rate
-        return 0  # Return 0 if no progress is found
+        progress = Progress.query.filter_by(child_id=child_id,
+                                            learning_content_id=activity_id).first()
+        return progress.completion_rate if progress else 0
+
+    def get_or_create_progress(self, activity_id, child_id):
+        progress = Progress.query.filter_by(learning_content_id=activity_id,
+                                            child_id=child_id).first()
+        if not progress:
+            progress = Progress(learning_content_id=activity_id, child_id=child_id)
+            self.db.session.add(progress)
+            self.db.session.commit()
+        return progress
+
+    def update_progress(self, activity_id, child_id, completion_rate):
+        progress = self.get_or_create_progress(activity_id, child_id)
+        progress.update_completion_rate(completion_rate)
+        self.db.session.commit()
+        return progress
 
     def save_activity_progress(self, activity_id, child_id, answers):
+        """Record how far through an activity a child is (not their score)."""
         activity = self.get_activity(activity_id)
         if not activity:
             return None, "Activity not found"
 
-        progress = Progress.query.filter_by(child_id=child_id, learning_content_id=activity_id).first()
-        if not progress:
-            progress = Progress(child_id=child_id, learning_content_id=activity_id, total_num_questions=len(activity.questions))
-            self.db.session.add(progress)
+        total_questions = len(activity.questions)
+        progress = self.get_or_create_progress(activity_id, child_id)
+        progress.total_num_questions = total_questions
 
-        answered_questions = len(answers)
-        progress.completion_rate = (answered_questions / len(activity.questions)) * 100
+        if total_questions:
+            answered = sum(1 for question in activity.questions
+                           if str(question.id) in answers)
+            progress.completion_rate = (answered / total_questions) * 100
+        else:
+            progress.completion_rate = 0
 
         self.db.session.commit()
-
         return progress, "Progress saved successfully"
 
     def submit_activity(self, activity_id, child_id, answers):
-        activity = Activity.query.get(activity_id)
+        """Mark an activity, log the attempt and nudge the learning plan."""
+        activity = self.get_activity(activity_id)
         if not activity:
             return None, "Activity not found"
 
         total_questions = len(activity.questions)
-        correct_answers = 0
+        if total_questions == 0:
+            return None, "This activity has no questions yet"
 
+        correct_answers = 0
         for question in activity.questions:
-            if str(question.id) in answers:
-                selected_answer_id = int(answers[str(question.id)])
-                correct_answer = next((a for a in question.answers if a.is_correct), None)
-                if correct_answer and correct_answer.id == selected_answer_id:
-                    correct_answers += 1
+            selected = answers.get(str(question.id))
+            if selected is None:
+                continue
+            correct = question.correct_answer
+            if correct and str(correct.id) == str(selected):
+                correct_answers += 1
 
         score = int((correct_answers / total_questions) * 100)
 
-        result, message = Result(child_id=child_id, activity_id=activity_id, score=score)
-        db.session.add(result)
+        result = Result(child_id=child_id, activity_id=activity_id, score=score)
+        self.db.session.add(result)
 
-        progress = Progress.query.filter_by(child_id=child_id, learning_content_id=activity_id).first()
-        if not progress:
-            progress = Progress(child_id=child_id, learning_content_id=activity_id, total_num_questions=total_questions)
-            db.session.add(progress)
+        progress = self.get_or_create_progress(activity_id, child_id)
+        progress.total_num_questions = total_questions
+        progress.mark_as_completed()
 
-        progress.completion_rate = score
-        progress.completed = True
+        self.db.session.commit()
 
-        db.session.commit()
+        self.learning_plan_service.update_learning_plan_from_activity(
+            child_id, activity.stem_code, score)
 
-        self.learning_plan_service.update_learning_plan_from_activity(child_id, activity.stem_code, score)
-
-        return result, message, f"Activity submitted successfully. Your score: {score}%"
-    
-    def get_or_create_progress(self, activity_id, child_id):
-        progress = Progress.query.filter_by(learning_content_id=activity_id, child_id=child_id).first()
-        if not progress:
-            progress = Progress(learning_content_id=activity_id, child_id=child_id)
-            db.session.add(progress)
-            db.session.commit()
-        return progress
-    
-    def update_progress(self, activity_id, child_id, completion_rate):
-        progress = Progress.query.filter_by(learning_content_id=activity_id, child_id=child_id).first()
-        if not progress:
-            progress = Progress(learning_content_id=activity_id, child_id=child_id, completion_rate=completion_rate)
-            db.session.add(progress)
-        else:
-            progress.completion_rate = completion_rate
-        db.session.commit()
-
-    def get_or_create_result(self, activity_id, child_id):
-        result = Result.query.filter_by(activity_id=activity_id, child_id=child_id).first()
-        if not result:
-            result = Result(activity_id=activity_id, child_id=child_id)
-            db.session.add(result)
-            db.session.commit()
-        return result
-
-    def update_result(self, activity_id, child_id, score):
-        result = Result.query.filter_by(activity_id=activity_id, child_id=child_id).first()
-        if not result:
-            result = Result(activity_id=activity_id, child_id=child_id, score=score)
-            db.session.add(result)
-        else:
-            result.score = score
-        db.session.commit()
+        return result, f"Activity submitted successfully. Your score: {score}%"
 
     def add_reward(self, activity_id, child_id, content):
-        reward = Reward(
-            activity_id=activity_id,
-            child_id=child_id,
-            content=content
-        )
-        db.session.add(reward)
-        db.session.commit()
+        reward = Reward(child_id=child_id, activity_id=activity_id, content=content)
+        self.db.session.add(reward)
+        self.db.session.commit()
+        return reward
 
-    def get_completed_activities(self, user_id):
-        return Progress.query.filter_by(child_id=user_id, completion_rate=100).all()
+    def get_completed_activities(self, child_id):
+        return Progress.query.filter_by(child_id=child_id, completed=True).all()
+
+    def get_latest_result(self, activity_id, child_id):
+        """The most recent attempt. Results are a log, not one row per pair."""
+        return (Result.query
+                .filter_by(activity_id=activity_id, child_id=child_id)
+                .order_by(Result.date_acquired.desc())
+                .first())
+
+
+def _as_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

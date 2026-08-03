@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log In - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -47,7 +48,7 @@
             });
 
             // Add event listener for back button
-            document.querySelector('.logout-btn').addEventListener('click', function() {
+            document.querySelector('.back-btn').addEventListener('click', function() {
                 playAndNavigate('back', "{{ url_for('index') }}");
             });
 
@@ -101,7 +102,7 @@
             <input type="password" class="input-field" placeholder="Enter password" id="password" name="password" required>
             <div class="button-container">
                 <button type="submit" class="login-btn">Log in</button>
-                <button type="button" class="logout-btn" onclick="goBack()">Back</button>
+                <button type="button" class="back-btn" onclick="goBack()">Back</button>
             </div>
         </form>
     </div>

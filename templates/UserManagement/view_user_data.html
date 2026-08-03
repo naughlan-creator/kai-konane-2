@@ -5,57 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>View User Data - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
     <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .header {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-        }
-        .footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-        }
+        /* A data table wants width and a steady top, not a hero layout. */
         .content {
-            background-image: url('/static/background_pictures/admin_page.jpg');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            box-sizing: border-box;
-            flex: 1;
-            overflow-y: auto;
-            padding: 120px 30px 100px; /* Adjust top and bottom padding to account for header and footer */
-            margin-top: 0;
-            margin-bottom: 0;
+            justify-content: flex-start;
+            align-items: stretch;
         }
-        .search-container {
-            position: sticky;
-            top: 5px; /* Adjust based on your header height */
-            background-color: var(--background-color);
-            padding: 10px 0;
-            z-index: 999;
-        }
-        .delete-button {
-            margin-left: 5px;
-            border: none;
-            color: white;
-            cursor: pointer;
-        }
-        
-        .delete-button:hover {
-            background-color: darkred !important;
-        }
+        .search-container { margin: 0 auto 8px; }
+        table td:last-child { white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -86,9 +45,9 @@
                     <td>{{ user.email }}</td>
                     <td>{{ user.role.value }}</td>
                     <td>
-                        <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="button edit-button" style="background-color: darkorchid">Edit</a>
+                        <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="button edit-button">Edit</a>
                         {% if user.role.value != 'ADMIN' %}
-                            <button onclick="confirmDelete({{ user.id }}, '{{ user.username }}')" class="button delete-button" style="background-color: crimson">Delete</button>
+                            <button onclick="confirmDelete({{ user.id }}, '{{ user.username }}')" class="button delete-button">Delete</button>
                         {% endif %}
                     </td>
                 </tr>

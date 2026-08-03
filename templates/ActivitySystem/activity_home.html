@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Activities - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -91,7 +92,7 @@
     </div>
 
     <!-- Header Section -->
-    <header class="header header-{{ current_user.gender.lower() }}">
+    <header class="header header-{{ (current_user.gender or '')|lower }}">
         <h1 class="title">Activities</h1>
         <button onclick="fadeOutMusicAndNavigate('back', '{{ url_for('learning_content.learning_content') }}')" 
                 class="logout-btn">Back to Learning Content</button>
@@ -117,7 +118,7 @@
                             <div class="level-group">
                     {% endif %}
 
-                    <article class="activity-item" data-stem-code="{{ activity.stem_code.name }}">
+                    <article class="activity-item" data-stem-code="{{ activity.stem_code.name if activity.stem_code else '' }}">
                         <div class="activity-image">
                             {% if activity.cover_image %}
                                 <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" 
@@ -129,7 +130,7 @@
 
                         <div class="activity-details">
                             <h4>{{ activity.title }}</h4>
-                            <div class="stem-code">{{ activity.stem_code.name }}</div>
+                            <div class="stem-code">{{ activity.stem_code.name if activity.stem_code else '' }}</div>
                             
                             <div class="activity-progress">
                                 {% if activity.is_completed %}
@@ -159,7 +160,7 @@
         </div>
     </main>
 
-    <footer class="footer footer-{{ current_user.gender.lower() }}"></footer>
+    <footer class="footer footer-{{ (current_user.gender or '')|lower }}"></footer>
 
     <script>
         let backgroundMusic;

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parent Profile - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
     <style>
         body {
@@ -68,8 +69,11 @@
             <input type="text" id="lastname" name="lastname" value="{{ user.lastname }}" required>
 
             <label for="education_level">Education Level:</label>
+            {# EducationLevel is passed in by the view. `user.EducationLevel` is
+               not an attribute of the model, so this loop used to produce an
+               empty dropdown and the field could never be changed. #}
             <select id="education_level" name="education_level" required>
-                {% for level in user.EducationLevel %}
+                {% for level in EducationLevel %}
                     <option value="{{ level.name }}" {% if level == user.education_level %}selected{% endif %}>{{ level.value }}</option>
                 {% endfor %}
             </select>
@@ -99,8 +103,8 @@
 
                 <label for="child_lunch_type">Lunch Type:</label>
                 <select id="child_lunch_type" name="lunch_type" required>
-                    {% for lunch_type in child.LunchType %}
-                        <option value="{{ lunch_type.name }}" {% if lunch_type == child.lunch_type %}selected{% endif %}>{{ lunch_type.value }}</option>
+                    {% for lunch in LunchType %}
+                        <option value="{{ lunch.name }}" {% if lunch == child.lunch_type %}selected{% endif %}>{{ lunch.value }}</option>
                     {% endfor %}
                 </select>
 

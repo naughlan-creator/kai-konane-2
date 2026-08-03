@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>View Feedback</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -41,14 +42,14 @@
                     <tr>
                         <td><a href="{{ url_for('feedback.read_feedback', feedback_id=feedback.id) }}" onclick="playAndNavigate('click', this.href); return false;">{{ feedback.subject }}</a></td>
                         <td>{{ feedback.sender.firstname }} {{ feedback.sender.lastname }}</td>
-                        <td>{{ feedback.dateTime.strftime('%Y-%m-%d %H:%M') }}</td>
-                        <td>{{ "Read" if feedback.isRead else "Unread" }}</td>
+                        <td>{{ feedback.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ "Read" if feedback.is_read else "Unread" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        <a href="{{ url_for('feedback.feedback_home') }}" class="button" style="background-color: #FF5722;" onclick="playAndNavigate('back', this.href); return false;">Close</a>
+        <a href="{{ url_for('feedback.feedback_home') }}" class="button" onclick="playAndNavigate('back', this.href); return false;">Close</a>
     </div>
     <div class="footer"></div>
 

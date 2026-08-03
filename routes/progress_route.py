@@ -10,6 +10,7 @@ from services.activity_service import ActivityService
 from services.story_service import StoryService
 from sqlalchemy import func
 from config import db
+from routes.auth import parent_required, teacher_required
 
 progress_bp = Blueprint('progress', __name__)
 
@@ -19,12 +20,8 @@ activity_service = ActivityService()
 story_service = StoryService()
 
 @progress_bp.route('/parent/progress')
-@login_required
+@parent_required
 def parent_progress():
-    if current_user.role != Role.PARENT:
-        flash("You don't have permission to view this page")
-        return redirect(url_for('index'))
-
     children = current_user.children
     progress_data = {}
     for child in children:
@@ -33,12 +30,8 @@ def parent_progress():
     return render_template('ProgressSystem/parent_progress.html', children=children, progress_data=progress_data)
 
 @progress_bp.route('/parent/results')
-@login_required
+@parent_required
 def parent_results():
-    if current_user.role != Role.PARENT:
-        flash("You don't have permission to view this page")
-        return redirect(url_for('index'))
-
     children = current_user.children
     results_data = {}
     for child in children:
@@ -47,35 +40,37 @@ def parent_results():
     return render_template('ProgressSystem/parent_results.html', children=children, results_data=results_data)
 
 @progress_bp.route('/teacher/progress')
-@login_required
+@teacher_required
 def teacher_progress():
-    if current_user.role != Role.TEACHER:
-        flash("You don't have permission to view this page")
-        return redirect(url_for('index'))
-
     progress_data = progress_service.get_progress_by_teacher(current_user.id)
     return render_template('ProgressSystem/teacher_progress.html', progress_data=progress_data)
 
 @progress_bp.route('/teacher/results')
-@login_required
+@teacher_required
 def teacher_results():
-    if current_user.role != Role.TEACHER:
-        flash("You don't have permission to view this page")
-        return redirect(url_for('index'))
-
     results_data = result_service.get_results_by_teacher(current_user.id)
     return render_template('ProgressSystem/teacher_results.html', results_data=results_data)
 
 @progress_bp.route('/api/child_stem_levels/<int:child_id>')
 @login_required
 def get_child_stem_levels(child_id):
-    # Check if the current user has permission to view this child's data
-    if current_user.role.name == 'parent':
-        if child_id not in [child.id for child in current_user.children]:
-            return jsonify({'error': 'Unauthorized'}), 403
-    elif current_user.role.name == 'teacher':
-        if child_id not in [student.id for student in current_user.students]:
-            return jsonify({'error': 'Unauthorized'}), 403
+    # role.name is 'PARENT'/'TEACHER' in upper case, so comparing it to
+    # 'parent'/'teacher' never matched and the permission check never ran --
+    # any signed-in user could read any child's scores. Compare enums instead,
+    # and deny by default rather than allowing anything unrecognised.
+    if current_user.role == Role.PARENT:
+        allowed = child_id in {child.id for child in current_user.children}
+    elif current_user.role == Role.TEACHER:
+        allowed = child_id in {student.id for student in current_user.students}
+    elif current_user.role == Role.ADMIN:
+        allowed = True
+    elif current_user.role == Role.CHILD:
+        allowed = child_id == current_user.id
+    else:
+        allowed = False
+
+    if not allowed:
+        return jsonify({'error': 'Unauthorized'}), 403
 
     # Fetch the child's results
     results = (
@@ -94,6 +89,7 @@ def get_child_stem_levels(child_id):
 
     # Update stem_levels with actual scores
     for stem_code, avg_score in results:
-        stem_levels[stem_code.name.lower()] = round(avg_score, 2)
+        if stem_code is not None and avg_score is not None:
+            stem_levels[stem_code.name.lower()] = round(avg_score, 2)
 
     return jsonify(stem_levels)

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Home - Kai Konane</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
@@ -21,34 +22,30 @@
             box-sizing: border-box;
         }
         
-        .button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 5px;
-            box-shadow: 0svi;
-        }
         
     </style>
 
     <div class="header">
-        <h1 class="title">Hello Admin</h1>
+        <h1 class="title">Admin Dashboard</h1>
         <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
     </div>
     <div class="content">
-        <div class="button-container">
-            <button data-href="{{ url_for('admin.add_content') }}" class="button" style="background-color: #4CAF50;">Add Content</button>
-            <button data-href="{{ url_for('admin.modify_content') }}" class="button" style="background-color: #FF9800;">Modify or Delete Content</button>
-            <button data-href="{{ url_for('admin.view_user_data') }}" class="button" style="background-color: #2196F3;">View Users Data</button>
-            <button data-href="{{ url_for('preschool.add_preschool') }}" class="button" style="background-color: #ff3b41;">Add Preschool</button>
-            <button data-href="{{ url_for('preschool.view_preschools') }}" class="button" style="background-color: #9C27B0;">View Preschools</button>
+        <div class="button-container tile-grid">
+            <button data-href="{{ url_for('admin.add_content') }}" class="button tile tile--green">
+                <span class="tile-icon">📚</span>Add Content
+            </button>
+            <button data-href="{{ url_for('admin.modify_content') }}" class="button tile tile--gold">
+                <span class="tile-icon">🛠️</span>Modify or Delete Content
+            </button>
+            <button data-href="{{ url_for('admin.view_user_data') }}" class="button tile tile--blue">
+                <span class="tile-icon">👥</span>View Users
+            </button>
+            <button data-href="{{ url_for('preschool.add_preschool') }}" class="button tile tile--coral">
+                <span class="tile-icon">🏫</span>Add Preschool
+            </button>
+            <button data-href="{{ url_for('preschool.view_preschools') }}" class="button tile tile--violet">
+                <span class="tile-icon">🗂️</span>View Preschools
+            </button>
         </div>
     </div>
     <div class="footer"></div>
