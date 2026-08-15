@@ -1,6 +1,7 @@
 # Architecture of Kai Konane
 ## Structure
 |   Service    | Responsibilities    |   Tech |   Talks to   |
+|---|---|---|---|
 |   gateway    | reverse proxy, single public entrypoint, routes /api/* vs UI, TLS in prod    |   nginx (alpine) |   web, api   |
 |   web    | UI: templates, sessions, forms. Holds zero business logic - calls api over HTTP    |   Flask + gunicorn |   api   |
 |   api    | The domain: auth, lessons/content, user progress. Owns database and all migrations    |   Flask + SQLAlchemy + gunicorn |   db   |
