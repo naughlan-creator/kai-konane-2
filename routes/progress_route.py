@@ -7,17 +7,13 @@ from models.activity import Activity, StemCode
 from models.result import Result
 from models.user import Role
 from routes.auth import parent_required, teacher_required
-from services.activity_service import ActivityService
 from services.progress_service import ProgressService
 from services.result_service import ResultService
-from services.story_service import StoryService
 
 progress_bp = Blueprint('progress', __name__)
 
 progress_service = ProgressService()
 result_service = ResultService()
-activity_service = ActivityService()
-story_service = StoryService()
 
 @progress_bp.route('/parent/progress')
 @parent_required

@@ -9,9 +9,6 @@ class ProgressService:
     def __init__(self, db=None):
         self.db = db or default_db
 
-    def get_progress(self, progress_id):
-        return self.db.session.get(Progress, progress_id)
-
     def get_progress_by_child(self, child_id):
         # learning_content is embedded by the progress templates.
         return (Progress.query

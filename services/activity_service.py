@@ -5,7 +5,6 @@ from models.child import Level
 from models.progress import Progress
 from models.question import Question
 from models.result import Result
-from models.reward import Reward
 from services.errors import NotFound, ValidationError
 from services.learning_plan_service import LearningPlanService
 from services.media import resolve_image
@@ -271,12 +270,6 @@ class ActivityService:
             child_id, activity.stem_code, score)
 
         return result, f"Activity submitted successfully. Your score: {score}%"
-
-    def add_reward(self, activity_id, child_id, content):
-        reward = Reward(child_id=child_id, activity_id=activity_id, content=content)
-        self.db.session.add(reward)
-        self.db.session.commit()
-        return reward
 
     def get_completed_activities(self, child_id):
         return Progress.query.filter_by(child_id=child_id, completed=True).all()
