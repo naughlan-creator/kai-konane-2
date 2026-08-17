@@ -16,7 +16,9 @@ This table is the honest picture of what exists today.
 |---|---|
 | `services/api` package, `create_app()` factory | **built** (#6) |
 | `/healthz`, `/readyz` | **built** (#6) |
-| JSON endpoints from the contract below | in progress (#7) |
+| JSON serializers implementing the four rules | **built** (#7) |
+| JSON content endpoints — activities, stories | **built** (#7) |
+| JSON endpoints — auth, users, plans, progress, feedback, preschools | in progress (#7) |
 | Bearer-token auth between `web` and `api` | planned (#8) |
 | `services/web` calling `api` over HTTP | planned (#9) |
 | `gateway`, Dockerfiles, compose | planned (#10) |
@@ -129,6 +131,54 @@ identity comparison compares `.name` to `.name`:
 `Authorization: Bearer` token. **Embeds** = related objects that must be nested
 in the response, derived from the deepest attribute chain in the consuming
 template.
+
+### The `/api` prefix is not stripped
+
+The api mounts its JSON blueprint at `/api` **internally**, and the gateway
+forwards without stripping the prefix:
+
+```nginx
+location /api/ {
+  proxy_pass http://api:5000;   # no trailing slash -- keeps /api
+}
+```
+
+A trailing slash on `proxy_pass` would strip it, so the api would receive
+`/activities`. That is unusable during the transition, because the HTML routes
+still own `/activities` and `/stories` until #9 and the two would collide. It is
+also simply easier to reason about: a path is identical whether you curl the api
+directly or go through the gateway.
+
+### Error shape
+
+Every error is `{"error": "<message safe to show a user>"}` with the status
+carried by the `ServiceError` subclass — `ValidationError` 400, `NotFound` 404,
+`Conflict` 409. Routes raise; a blueprint error handler converts. No route needs
+a try/except.
+
+Routing failures (404, 405) are handled **app-wide** with a path check, not on
+the blueprint. URL matching happens before Flask knows which blueprint owns a
+path, so `@api_bp.errorhandler(404)` never fires for an unmatched `/api` path
+and the client would get Flask's HTML error page.
+
+### Authentication is a seam, not yet a wall
+
+`app/api/auth_seam.py` defines `@token_required`, currently a **no-op**. It
+marks every endpoint the contract lists as `Token` so #8 becomes a one-file
+change rather than an audit. This is safe only because nothing routes to
+`/api/*` from outside until the gateway arrives in #10, and #8 lands first.
+
+> **#8 must replace the body of `token_required` before #10 merges.** An
+> unauthenticated `/api/*` behind a public gateway is a writable database.
+
+### Exposed answer keys
+
+`GET /api/activities/{id}` includes `answers[].is_correct`, because
+`activity_page.html` uses it to play the right sound on selection. Scoring is
+server-side, so this does not let a child forge a score — but it does let anyone
+reading the payload see the answers. Fixing it properly means checking answers
+one at a time server-side. Recorded here rather than fixed; it predates the
+split.
 
 ### Auth and registration
 
