@@ -1,39 +1,57 @@
-from models.preschool import Preschool
 from config import db as default_db
+from models.preschool import Preschool
+from services.errors import Conflict, NotFound, ValidationError
+
 
 class PreschoolService:
     def __init__(self, db=None):
         self.db = db or default_db
 
-    def add_preschool(self, preschool):
-        self.db.session.add(preschool)
-        self.db.session.commit()
-        if self.get_preschool(preschool.id):
-            return "Preschool added!!!"
-        return "Preschool not added!!!"
+    def get_preschool(self, preschool_id):
+        return self.db.session.get(Preschool, preschool_id)
 
-    @staticmethod
-    def get_preschool(preschool_id):
-        return default_db.session.get(Preschool, preschool_id)
-
-    @staticmethod
-    def get_preschools():
+    def get_preschools(self):
         return Preschool.query.order_by(Preschool.name).all()
 
-    def update_preschool(self, preschool):
-        existing_preschool = self.get_preschool(preschool.id)
-        if existing_preschool:
-            existing_preschool.name = preschool.name
-            self.db.session.commit()
-            return "Preschool updated!!!"
-        return "Preschool not updated!!!"
+    def _require(self, preschool_id):
+        preschool = self.get_preschool(preschool_id)
+        if preschool is None:
+            raise NotFound("That preschool no longer exists")
+        return preschool
+
+    @staticmethod
+    def _clean_name(name):
+        name = (name or "").strip()
+        if not name:
+            raise ValidationError("Please enter a preschool name")
+        return name
+
+    def add_preschool(self, name):
+        name = self._clean_name(name)
+        if Preschool.query.filter_by(name=name).first():
+            raise Conflict("A preschool with that name already exists")
+
+        preschool = Preschool(name=name)
+        self.db.session.add(preschool)
+        self.db.session.commit()
+        return preschool
+
+    def update_preschool(self, preschool_id, name):
+        preschool = self._require(preschool_id)
+        name = self._clean_name(name)
+        if Preschool.query.filter(Preschool.name == name,
+                                  Preschool.id != preschool_id).first():
+            raise Conflict("A preschool with that name already exists")
+
+        preschool.name = name
+        self.db.session.commit()
+        return preschool
 
     def delete_preschool(self, preschool_id):
-        preschool = self.get_preschool(preschool_id)
-        if not preschool:
-            return "Preschool not deleted!!!"
+        preschool = self._require(preschool_id)
         if preschool.students or preschool.teachers:
-            return "Preschool still has teachers or learners assigned to it!!!"
+            raise Conflict("Move the teachers and learners out of this preschool first")
+
         self.db.session.delete(preschool)
         self.db.session.commit()
-        return "Preschool deleted!!!"
+        return preschool

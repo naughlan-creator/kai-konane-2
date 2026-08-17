@@ -1,17 +1,14 @@
+from config import db as default_db
 from models.activity import Activity, StemCode
-from models.child import Level
-from services.learning_plan_service import LearningPlanService
-from services.media import resolve_image
-from models.question import Question
 from models.answer import Answer
+from models.child import Level
+from models.progress import Progress
+from models.question import Question
 from models.result import Result
 from models.reward import Reward
-from models.progress import Progress
-from config import db as default_db
-
-
-class ActivityError(ValueError):
-    """Raised when submitted activity content is not usable."""
+from services.errors import NotFound, ValidationError
+from services.learning_plan_service import LearningPlanService
+from services.media import resolve_image
 
 
 class ActivityService:
@@ -29,21 +26,21 @@ class ActivityService:
         activity behind.
         """
         if not (title or '').strip():
-            raise ActivityError("An activity needs a title")
+            raise ValidationError("An activity needs a title")
 
         code = StemCode.coerce(stem_code)
         if code is None:
-            raise ActivityError("Choose a valid STEM subject")
+            raise ValidationError("Choose a valid STEM subject")
 
         activity_level = Level.coerce(level)
         if activity_level is None:
-            raise ActivityError("Choose a valid level")
+            raise ValidationError("Choose a valid level")
 
         cleaned = []
         for index, question_data in enumerate(questions_data or [], start=1):
             content = (question_data.get('content') or '').strip()
             if not content:
-                raise ActivityError(f"Question {index} is missing its text")
+                raise ValidationError(f"Question {index} is missing its text")
 
             answers = []
             for answer_data in question_data.get('answers') or []:
@@ -57,10 +54,10 @@ class ActivityService:
                 })
 
             if len(answers) < 2:
-                raise ActivityError(f"Question {index} needs at least two answers")
+                raise ValidationError(f"Question {index} needs at least two answers")
             correct = [a for a in answers if a['is_correct']]
             if len(correct) != 1:
-                raise ActivityError(
+                raise ValidationError(
                     f"Question {index} needs exactly one answer marked correct")
 
             cleaned.append({
@@ -70,17 +67,15 @@ class ActivityService:
             })
 
         if not cleaned:
-            raise ActivityError("An activity needs at least one question")
+            raise ValidationError("An activity needs at least one question")
 
         return code, activity_level, cleaned
 
     def add_activity(self, title, stem_code, level, cover_image, questions_data,
                      description=None, existing_cover=None):
-        try:
-            code, activity_level, questions = self._validate(
-                title, stem_code, level, questions_data)
-        except ActivityError as e:
-            return f"Activity not added!!! {e}"
+        """Create an activity. Raises ValidationError; returns the Activity."""
+        code, activity_level, questions = self._validate(
+            title, stem_code, level, questions_data)
 
         try:
             activity = Activity(
@@ -103,26 +98,23 @@ class ActivityService:
 
             self.db.session.add(activity)
             self.db.session.commit()
-            return "Activity added!!!"
-        except Exception as e:
+            return activity
+        except Exception:
             self.db.session.rollback()
-            return f"Activity not added!!! Error: {e}"
+            raise
 
     def update_activity(self, activity_id, title=None, stem_code=None, level=None,
                         cover_image=None, questions_data=None, description=None,
                         existing_cover=None):
         activity = self.get_activity(activity_id)
-        if not activity:
-            return "Activity not found!!!"
+        if activity is None:
+            raise NotFound("That activity no longer exists")
 
-        try:
-            code, activity_level, questions = self._validate(
-                title or activity.title,
-                stem_code or activity.stem_code,
-                level or activity.level,
-                questions_data)
-        except ActivityError as e:
-            return f"Activity not updated!!! {e}"
+        code, activity_level, questions = self._validate(
+            title or activity.title,
+            stem_code or activity.stem_code,
+            level or activity.level,
+            questions_data)
 
         try:
             activity.title = (title or activity.title).strip()
@@ -136,10 +128,10 @@ class ActivityService:
             self._sync_questions(activity, questions)
 
             self.db.session.commit()
-            return "Activity updated!!!"
-        except Exception as e:
+            return activity
+        except Exception:
             self.db.session.rollback()
-            return f"Activity not updated!!! Error: {e}"
+            raise
 
     def _sync_questions(self, activity, questions):
         """Make the stored questions match the submitted ones exactly.
@@ -192,14 +184,14 @@ class ActivityService:
 
     def delete_activity(self, activity_id):
         activity = self.get_activity(activity_id)
-        if not activity:
-            return "Activity not found!!!"
+        if activity is None:
+            raise NotFound("That activity no longer exists")
 
         # Progress, results and rewards all cascade from the model definitions
         # now, so there is nothing to clear by hand.
         self.db.session.delete(activity)
         self.db.session.commit()
-        return "Activity deleted!!!"
+        return activity
 
     # ------------------------------------------------------------------ reading
 
@@ -209,15 +201,6 @@ class ActivityService:
     def get_activities(self):
         return Activity.query.order_by(Activity.id).all()
 
-    def get_activities_for_level(self, stem_code, level):
-        """Activities in one strand at or below a level."""
-        allowed = [candidate for candidate in Level if candidate.rank <= level.rank]
-        return (Activity.query
-                .filter(Activity.stem_code == stem_code, Activity.level.in_(allowed))
-                .order_by(Activity.level, Activity.id)
-                .all())
-
-    # ----------------------------------------------------------- doing activities
 
     def get_activity_progress(self, activity_id, child_id):
         progress = Progress.query.filter_by(child_id=child_id,
@@ -233,11 +216,6 @@ class ActivityService:
             self.db.session.commit()
         return progress
 
-    def update_progress(self, activity_id, child_id, completion_rate):
-        progress = self.get_or_create_progress(activity_id, child_id)
-        progress.update_completion_rate(completion_rate)
-        self.db.session.commit()
-        return progress
 
     def save_activity_progress(self, activity_id, child_id, answers):
         """Record how far through an activity a child is (not their score)."""
@@ -303,12 +281,6 @@ class ActivityService:
     def get_completed_activities(self, child_id):
         return Progress.query.filter_by(child_id=child_id, completed=True).all()
 
-    def get_latest_result(self, activity_id, child_id):
-        """The most recent attempt. Results are a log, not one row per pair."""
-        return (Result.query
-                .filter_by(activity_id=activity_id, child_id=child_id)
-                .order_by(Result.date_acquired.desc())
-                .first())
 
 
 def _as_int(value):

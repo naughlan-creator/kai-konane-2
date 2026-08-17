@@ -1,14 +1,11 @@
-from models.story import Story
+from config import db as default_db
 from models.child import Level
+from models.page import Page
 from models.progress import Progress
 from models.reward import Reward
-from models.page import Page
+from models.story import Story
+from services.errors import NotFound, ValidationError
 from services.media import resolve_image
-from config import db as default_db
-
-
-class StoryError(ValueError):
-    """Raised when submitted story content is not usable."""
 
 
 class StoryService:
@@ -20,17 +17,17 @@ class StoryService:
     @staticmethod
     def _validate(title, level, pages_data):
         if not (title or '').strip():
-            raise StoryError("A story needs a title")
+            raise ValidationError("A story needs a title")
 
         story_level = Level.coerce(level)
         if story_level is None:
-            raise StoryError("Choose a valid level")
+            raise ValidationError("Choose a valid level")
 
         cleaned = []
         for index, page_data in enumerate(pages_data or [], start=1):
             line = (page_data.get('line_of_page') or '').strip()
             if not line:
-                raise StoryError(f"Page {index} is missing its text")
+                raise ValidationError(f"Page {index} is missing its text")
             cleaned.append({
                 'id': page_data.get('id'),
                 'line_of_page': line,
@@ -39,16 +36,13 @@ class StoryService:
             })
 
         if not cleaned:
-            raise StoryError("A story needs at least one page")
+            raise ValidationError("A story needs at least one page")
 
         return story_level, cleaned
 
     def add_story(self, title, level, cover_image, pages, description=None,
                   existing_cover=None):
-        try:
-            story_level, pages_data = self._validate(title, level, pages)
-        except StoryError as e:
-            return None, str(e)
+        story_level, pages_data = self._validate(title, level, pages)
 
         try:
             story = Story(
@@ -68,22 +62,19 @@ class StoryService:
 
             self.db.session.add(story)
             self.db.session.commit()
-            return story, "Story added!!!"
-        except Exception as e:
+            return story
+        except Exception:
             self.db.session.rollback()
-            return None, f"Story not added!!! Error: {e}"
+            raise
 
     def update_story(self, story_id, title=None, level=None, cover_image=None,
                      pages=None, description=None, existing_cover=None):
         story = self.get_story(story_id)
-        if not story:
-            return "Story not found!!!"
+        if story is None:
+            raise NotFound("That story no longer exists")
 
-        try:
-            story_level, pages_data = self._validate(
-                title or story.title, level or story.level, pages)
-        except StoryError as e:
-            return f"Story not updated!!! {e}"
+        story_level, pages_data = self._validate(
+            title or story.title, level or story.level, pages)
 
         try:
             story.title = (title or story.title).strip()
@@ -98,10 +89,10 @@ class StoryService:
 
             # The old version never committed, so story edits were discarded.
             self.db.session.commit()
-            return "Story updated!!!"
-        except Exception as e:
+            return story
+        except Exception:
             self.db.session.rollback()
-            return f"Story not updated!!! Error: {e}"
+            raise
 
     def _sync_pages(self, story, pages_data):
         """Match stored pages to submitted pages, keeping images when untouched."""
@@ -142,24 +133,13 @@ class StoryService:
 
     def delete_story(self, story_id):
         story = self.get_story(story_id)
-        if not story:
-            return "Story not found!!!"
+        if story is None:
+            raise NotFound("That story no longer exists")
 
         self.db.session.delete(story)
         self.db.session.commit()
-        return "Story deleted!!!"
+        return story
 
-    def add_page(self, story_id, line_of_page):
-        story = self.get_story(story_id)
-        if not story:
-            return "Story not found!!!"
-        next_number = max((page.page_number for page in story.pages), default=0) + 1
-        page = Page(line_of_page=line_of_page, page_number=next_number)
-        story.pages.append(page)
-        self.db.session.commit()
-        return page
-
-    # ------------------------------------------------------------------ reading
 
     def get_story(self, story_id):
         return self.db.session.get(Story, story_id)
@@ -167,19 +147,7 @@ class StoryService:
     def get_stories(self):
         return Story.query.order_by(Story.id).all()
 
-    def get_stories_for_level(self, level):
-        allowed = [candidate for candidate in Level if candidate.rank <= level.rank]
-        return (Story.query
-                .filter(Story.level.in_(allowed))
-                .order_by(Story.level, Story.id)
-                .all())
 
-    # ------------------------------------------------------------ reading a story
-
-    def get_story_progress(self, story_id, child_id):
-        progress = Progress.query.filter_by(child_id=child_id,
-                                            learning_content_id=story_id).first()
-        return progress.completion_rate if progress else 0
 
     def get_or_create_progress(self, story_id, child_id):
         progress = Progress.query.filter_by(learning_content_id=story_id,
@@ -190,11 +158,6 @@ class StoryService:
             self.db.session.commit()
         return progress
 
-    def update_progress(self, story_id, child_id, completion_rate):
-        progress = self.get_or_create_progress(story_id, child_id)
-        progress.update_completion_rate(completion_rate)
-        self.db.session.commit()
-        return progress
 
     def save_story_progress(self, story_id, child_id, current_page):
         story = self.get_story(story_id)
