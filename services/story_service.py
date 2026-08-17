@@ -196,12 +196,6 @@ class StoryService:
         self.db.session.commit()
         return reward, "Story completed and reward given"
 
-    def add_reward(self, story_id, child_id, content):
-        reward = Reward(child_id=child_id, story_id=story_id, content=content)
-        self.db.session.add(reward)
-        self.db.session.commit()
-        return reward
-
 
 def _as_int(value):
     try:

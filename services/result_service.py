@@ -9,9 +9,6 @@ class ResultService:
     def __init__(self, db=None):
         self.db = db or default_db
 
-    def get_result(self, result_id):
-        return self.db.session.get(Result, result_id)
-
     def get_results_by_child(self, child_id):
         # activity is embedded by the results templates (activity.title,
         # activity.stem_code), so load it up front rather than per row.

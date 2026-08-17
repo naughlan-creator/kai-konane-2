@@ -23,15 +23,6 @@ class RewardService:
         self.db.session.commit()
         return reward
 
-    def get_reward(self, reward_id):
-        return self.db.session.get(Reward, reward_id)
-
-    def get_rewards_by_child(self, child_id):
-        return (Reward.query
-                .filter_by(child_id=child_id)
-                .order_by(Reward.date_acquired.desc())
-                .all())
-
     def create_reward_for_activity(self, child_id, activity_id, score):
         content = next((badge for threshold, badge in BADGES if score >= threshold),
                        PARTICIPATION)
