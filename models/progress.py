@@ -1,5 +1,6 @@
 from config import db
 
+
 class Progress(db.Model):
     """How far a child has got through one piece of learning content."""
     __tablename__ = 'progress'

@@ -1,5 +1,7 @@
 from enum import Enum as PyEnum
+
 from config import db
+
 
 class LCTYPE(PyEnum):
     ACTIVITY = 'ACTIVITY'

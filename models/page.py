@@ -1,5 +1,6 @@
 from config import db
 
+
 class Page(db.Model):
     __tablename__ = 'page'
 

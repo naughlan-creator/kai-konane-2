@@ -1,6 +1,9 @@
-from .user import User, Role
-from config import db
 from enum import Enum as PyEnum
+
+from config import db
+
+from .user import User
+
 
 class Level(PyEnum):
     BEGINNER = 'BEGINNER'

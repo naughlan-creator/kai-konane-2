@@ -1,7 +1,10 @@
-from .learning_content import LearningContent, LCTYPE
 from enum import Enum as PyEnum
-from .child import Level, LevelEnum
+
 from config import db
+
+from .child import LevelEnum
+from .learning_content import LCTYPE, LearningContent
+
 
 class StemCode(PyEnum):
     SCIENCE = 'SCIENCE'

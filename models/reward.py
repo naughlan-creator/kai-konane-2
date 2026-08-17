@@ -1,5 +1,8 @@
-from datetime import date, datetime
+from datetime import datetime
+
 from config import db
+from utils import utcdate
+
 
 class Reward(db.Model):
     __tablename__ = 'rewards'
@@ -13,7 +16,7 @@ class Reward(db.Model):
                          nullable=False, index=True)
     content = db.Column(db.String(255), nullable=False)
     # Renamed from the misspelled dateAquired.
-    date_acquired = db.Column(db.Date, default=date.today, nullable=False)
+    date_acquired = db.Column(db.Date, default=utcdate, nullable=False)
 
     activity = db.relationship("Activity", back_populates="rewards")
     story = db.relationship("Story", back_populates="rewards")
@@ -37,7 +40,7 @@ class Reward(db.Model):
         self.story_id = story_id
         if isinstance(date_acquired, datetime):
             date_acquired = date_acquired.date()
-        self.date_acquired = date_acquired or date.today()
+        self.date_acquired = date_acquired or utcdate()
 
     def __repr__(self):
         return f"<Reward {self.id} child={self.child_id} {self.content!r}>"

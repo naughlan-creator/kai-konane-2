@@ -1,5 +1,6 @@
 from config import db
-from datetime import datetime
+from utils import utcnow
+
 
 class Result(db.Model):
     """One recorded attempt at an activity.
@@ -16,7 +17,7 @@ class Result(db.Model):
     activity_id = db.Column(db.Integer, db.ForeignKey('activity.id', ondelete='CASCADE'),
                             nullable=False, index=True)
     score = db.Column(db.Float, default=0.0, nullable=False)
-    date_acquired = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    date_acquired = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
 
     child = db.relationship("Child", back_populates="results")
     activity = db.relationship("Activity", back_populates="results")
@@ -27,7 +28,7 @@ class Result(db.Model):
         self.child_id = child_id
         self.activity_id = activity_id
         self.score = score
-        self.date_acquired = date_acquired or datetime.utcnow()
+        self.date_acquired = date_acquired or utcnow()
 
     def __repr__(self):
         return f"<Result {self.id} child={self.child_id} activity={self.activity_id} {self.score}>"

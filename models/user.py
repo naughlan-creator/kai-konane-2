@@ -1,8 +1,11 @@
 from enum import Enum as PyEnum
-from datetime import datetime
+
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
+
 from config import db
+from utils import utcnow
+
 
 class Role(PyEnum):
     ADMIN = "ADMIN"
@@ -31,7 +34,7 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     role = db.Column(db.Enum(Role, name='role'), nullable=False, index=True)
     type = db.Column(db.String(50), index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     sent_feedbacks = db.relationship('Feedback', foreign_keys='Feedback.sender_id',
                                      back_populates='sender', cascade="all, delete-orphan")

@@ -1,5 +1,6 @@
 from config import db
 
+
 class Preschool(db.Model):
     __tablename__ = 'preschools'
 
