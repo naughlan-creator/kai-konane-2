@@ -1,6 +1,8 @@
-from .user import User
-from .child import EducationLevel
 from config import db
+
+from .child import EducationLevel
+from .user import User
+
 
 class Parent(User):
     __tablename__ = 'parents'

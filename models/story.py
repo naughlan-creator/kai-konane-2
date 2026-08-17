@@ -1,6 +1,8 @@
-from .learning_content import LearningContent, LCTYPE
 from config import db
-from .child import Level, LevelEnum
+
+from .child import LevelEnum
+from .learning_content import LCTYPE, LearningContent
+
 
 class Story(LearningContent):
     __tablename__ = 'story'

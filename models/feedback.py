@@ -1,5 +1,5 @@
 from config import db
-from datetime import datetime
+from utils import utcnow
 
 
 class Feedback(db.Model):
@@ -13,7 +13,7 @@ class Feedback(db.Model):
     subject = db.Column(db.String(120), nullable=False)
     message = db.Column(db.Text, nullable=False)
     # Renamed from dateTime / isRead: everything else in the schema is snake_case.
-    sent_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    sent_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
     child_id = db.Column(db.Integer, db.ForeignKey('children.id', ondelete='CASCADE'),
                          index=True)
@@ -28,7 +28,7 @@ class Feedback(db.Model):
         self.sender_id = sender_id
         self.recipient_id = recipient_id
         self.child_id = child_id
-        self.sent_at = sent_at or datetime.utcnow()
+        self.sent_at = sent_at or utcnow()
 
     def __repr__(self):
         return f"<Feedback {self.id} {self.sender_id}->{self.recipient_id} {self.subject!r}>"

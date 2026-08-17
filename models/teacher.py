@@ -1,5 +1,7 @@
-from .user import User
 from config import db
+
+from .user import User
+
 
 class Teacher(User):
     __tablename__ = 'teachers'

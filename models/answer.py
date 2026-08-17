@@ -1,5 +1,6 @@
 from config import db
 
+
 class Answer(db.Model):
     __tablename__ = 'answer'
 
