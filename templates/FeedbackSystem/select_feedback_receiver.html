@@ -9,6 +9,8 @@
     <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
 
     <style>
         .content {
@@ -40,19 +42,13 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for recipient in recipients %}
+                    {% for row in recipients %}
                     <tr>
-                        <td>{{ recipient.firstname }}</td>
-                        <td>{{ recipient.lastname }}</td>
+                        <td>{{ row.person.firstname }}</td>
+                        <td>{{ row.person.lastname }}</td>
+                        <td>{{ row.shared_children | map(attribute='firstname') | join(', ') }}</td>
                         <td>
-                            {% if user_role == 'PARENT' %}
-                                {{ recipient.students[0].firstname if recipient.students else 'N/A' }}
-                            {% elif user_role == 'TEACHER' %}
-                                {{ recipient.children[0].firstname if recipient.children else 'N/A' }}
-                            {% endif %}
-                        </td>
-                        <td>
-                            <a href="{{ url_for('feedback.write_feedback', recipient_id=recipient.id) }}" class="select-btn" onclick="playAndNavigate('click', this.href); return false;">Select</a>
+                            <a href="{{ url_for('feedback.write_feedback', recipient_id=row.person.id) }}" class="select-btn" onclick="playAndNavigate('click', this.href); return false;">Select</a>
                         </td>
                     </tr>
                     {% endfor %}

@@ -45,6 +45,8 @@
     </style>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <div class="header">
         <h1 class="title">Parent Profile Management</h1>
         <button onclick="playAndNavigate('{{ url_for('user.parent_home') }}')" class="button">Home</button>

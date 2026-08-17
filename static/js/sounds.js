@@ -1,4 +1,8 @@
 console.log('sounds.js loaded');
+
+// Longest a navigation is ever allowed to wait for a sound to finish.
+const MAX_SOUND_WAIT_MS = 900;
+
 class AudioManager {
     constructor() {
         this.context = new (window.AudioContext || window.webkitAudioContext)();
@@ -34,20 +38,37 @@ class AudioManager {
     }
 
     playSound(id) {
-        console.log(`Attempting to play sound: ${id}`);
-        if (this.sounds[id]) {
-            const source = this.context.createBufferSource();
-            source.buffer = this.sounds[id];
-            source.connect(this.masterGainNode);
-            source.start(0);
-            console.log(`Playing sound: ${id}`);
-            return new Promise(resolve => {
-                source.onended = resolve;
-            });
-        } else {
-            console.error(`Sound not found: ${id}`);
+        const buffer = this.sounds[id];
+        if (!buffer) {
+            console.warn(`Sound not found: ${id}`);
             return Promise.resolve();
         }
+
+        // Browsers create the AudioContext in a suspended state and only allow
+        // it to start after a user gesture. A suspended context never fires
+        // `onended`, so a promise chained to it never settles -- which silently
+        // killed every navigation that waits on a sound, logout included.
+        //
+        // Two guarantees here: resume the context first, and never wait longer
+        // than MAX_SOUND_WAIT_MS. Audio is decoration; it must not be able to
+        // block the UI.
+        return this.context.resume().catch(() => {}).then(() => {
+            const source = this.context.createBufferSource();
+            source.buffer = buffer;
+            source.connect(this.masterGainNode);
+            source.start(0);
+
+            return new Promise(resolve => {
+                let settled = false;
+                const finish = () => {
+                    if (settled) { return; }
+                    settled = true;
+                    resolve();
+                };
+                source.onended = finish;
+                setTimeout(finish, Math.min(buffer.duration * 1000 + 150, MAX_SOUND_WAIT_MS));
+            });
+        });
     }
 
     setVolume(volume) {
@@ -184,11 +205,17 @@ function playFeedback(){
     return playSound('feedback');
 }
 
-// New function for playing sound and then navigating
+// Play a sound, then navigate -- but navigate regardless if the audio stalls.
 function playAndNavigate(soundId, url) {
-    playSound(soundId).then(() => {
+    let navigated = false;
+    const go = () => {
+        if (navigated) { return; }
+        navigated = true;
         window.location.href = url;
-    });
+    };
+    playSound(soundId).then(go);
+    setTimeout(go, MAX_SOUND_WAIT_MS + 200);
+    return false;
 }
 
 function initializeVolumeControl() {
@@ -238,20 +265,18 @@ document.addEventListener('DOMContentLoaded', function() {
         { id: 'feedback', url: '/static/sounds/feedback.wav' }
     ];
 
+    // Buttons are deliberately NOT disabled while sounds load. They used to be,
+    // which meant 29 network fetches stood between the page appearing and it
+    // becoming usable -- and any one of them failing left the page frozen.
+    // playSound() degrades to a no-op for sounds that never arrived, so the
+    // worst case is now a silent click rather than a dead page.
     Promise.all(soundsToLoad.map(sound => audioManager.loadSound(sound.id, sound.url)))
-    .then(() => {
-        console.log('All sounds loaded successfully');
-        document.querySelectorAll('button').forEach(button => {
-            button.disabled = false;
-        });
-        window.audioManager.soundsLoaded = true;
-        document.dispatchEvent(new Event('soundsLoaded'));
-    })
-    .catch(error => console.error('Error loading sounds:', error));
-    
-    document.querySelectorAll('button').forEach(button => {
-        button.disabled = true;
-    });
+        .then(() => {
+            console.log('All sounds loaded successfully');
+            window.audioManager.soundsLoaded = true;
+            document.dispatchEvent(new Event('soundsLoaded'));
+        })
+        .catch(error => console.error('Error loading sounds:', error));
 });
 
 window.audioManager = audioManager;

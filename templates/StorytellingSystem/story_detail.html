@@ -161,6 +161,8 @@
     </style>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <audio id="storyStart" src="{{ url_for('static', filename='sounds/story_start.wav') }}"></audio>
     <audio id="storyEnd" src="{{ url_for('static', filename='sounds/story_end.wav') }}"></audio>
     <audio id="switchPage" src="{{ url_for('static', filename='sounds/switch_page.wav') }}"></audio>

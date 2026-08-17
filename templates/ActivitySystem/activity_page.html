@@ -10,6 +10,8 @@
     <script src="{{ url_for('static', filename='js/voice-config.js') }}"></script>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <audio id="correctAnswer" src="{{ url_for('static', filename='sounds/correct.wav') }}"></audio>
     <audio id="incorrectAnswer" src="{{ url_for('static', filename='sounds/incorrect.wav') }}"></audio>
     <audio id="activityMusic" src="{{ url_for('static', filename='sounds/activity_music.wav') }}" loop></audio>

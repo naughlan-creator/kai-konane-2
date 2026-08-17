@@ -33,6 +33,8 @@
     </style>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <div class="header">
         <h1 class="title">Learner Results</h1>
         <button onclick="playAndNavigate('back', '{{ url_for('user.teacher_home') }}')" class="button">Home</button>
