@@ -1,7 +1,7 @@
 """Shared authorisation helpers for the blueprints."""
 from functools import wraps
 
-from flask import flash, redirect, url_for, jsonify, request
+from flask import flash, jsonify, redirect, request, url_for
 from flask_login import current_user
 
 from models.user import Role

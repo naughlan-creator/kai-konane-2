@@ -1,11 +1,12 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_required, current_user
-from models.user import Role
-from models.child import Child, Level
-from services.learning_plan_service import LearningPlanService
-from level_predictor import update_child_level
-from routes.auth import teacher_required, roles_required
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user
+
 from config import db
+from level_predictor import update_child_level
+from models.child import Child, Level
+from models.user import Role
+from routes.auth import roles_required, teacher_required
+from services.learning_plan_service import LearningPlanService
 
 learning_plan_bp = Blueprint('learning_plan', __name__)
 
