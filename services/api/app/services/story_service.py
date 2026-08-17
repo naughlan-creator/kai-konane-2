@@ -144,6 +144,14 @@ class StoryService:
     def get_story(self, story_id):
         return self.db.session.get(Story, story_id)
 
+    def get_stories_for_level(self, level):
+        """Stories at or below a reading level."""
+        allowed = [candidate for candidate in Level if candidate.rank <= level.rank]
+        return (Story.query
+                .filter(Story.level.in_(allowed))
+                .order_by(Story.level, Story.id)
+                .all())
+
     def get_stories(self):
         return Story.query.order_by(Story.id).all()
 
