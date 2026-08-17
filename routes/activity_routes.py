@@ -1,15 +1,24 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
-from flask_login import login_required, current_user
+import traceback
+
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+from flask_login import current_user, login_required
+
+from level_predictor import update_child_level
+from models.child import Level
+from routes.auth import child_required
 from services.activity_service import ActivityService
+from services.child_service import ChildService
 from services.learning_plan_service import LearningPlanService
 from services.reward_service import RewardService
-from models.child import Level
-from models.activity import StemCode
-from services.child_service import ChildService
-from flask import current_app
-import traceback
-from level_predictor import update_child_level
-from routes.auth import child_required
 
 activity_bp = Blueprint('activity', __name__)
 activity_service = ActivityService()

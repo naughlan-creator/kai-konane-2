@@ -1,12 +1,14 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user
-from services.activity_service import ActivityService
-from services.story_service import StoryService
-from services.media import library_images
-from models.user import User, Role
-from models.learning_content import LCTYPE
+
 from config import db
+from models.learning_content import LCTYPE
+from models.user import Role, User
 from routes.auth import admin_required
+from services.activity_service import ActivityService
+from services.errors import ServiceError
+from services.media import library_images
+from services.story_service import StoryService
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -72,11 +74,6 @@ def _collect_pages(form, files):
     return pages
 
 
-def _flash_result(message, success_prefix):
-    flash(message, 'success' if message.startswith(success_prefix) else 'error')
-    return message.startswith(success_prefix)
-
-
 @admin_bp.route('/admin/home')
 @admin_required
 def admin_home():
@@ -116,20 +113,24 @@ def add_content():
 @admin_required
 def add_activity():
     if request.method == 'POST':
-        result = activity_service.add_activity(
-            title=request.form.get('activity_title'),
-            stem_code=request.form.get('stem_code'),
-            level=request.form.get('level'),
-            cover_image=request.files.get('cover_image'),
-            questions_data=_collect_questions(request.form),
-            description=request.form.get('description'),
-            existing_cover=request.form.get('existing_cover'),
-        )
-        if _flash_result(result, 'Activity added'):
-            return redirect(url_for('admin.modify_content'))
-        # Redisplay rather than discarding what the author typed.
-        return render_template('ContentManagement/activity_form.html',
-                               images=library_images())
+        try:
+            activity = activity_service.add_activity(
+                title=request.form.get('activity_title'),
+                stem_code=request.form.get('stem_code'),
+                level=request.form.get('level'),
+                cover_image=request.files.get('cover_image'),
+                questions_data=_collect_questions(request.form),
+                description=request.form.get('description'),
+                existing_cover=request.form.get('existing_cover'),
+            )
+        except ServiceError as e:
+            # Redisplay rather than discarding what the author typed.
+            flash(str(e), 'error')
+            return render_template('ContentManagement/activity_form.html',
+                                   images=library_images())
+
+        flash('Added ' + activity.title, 'success')
+        return redirect(url_for('admin.modify_content'))
 
     return render_template('ContentManagement/activity_form.html', images=library_images())
 
@@ -138,19 +139,22 @@ def add_activity():
 @admin_required
 def add_story():
     if request.method == 'POST':
-        story, message = story_service.add_story(
-            title=request.form.get('story_title'),
-            level=request.form.get('level'),
-            cover_image=request.files.get('cover_image'),
-            pages=_collect_pages(request.form, request.files),
-            description=request.form.get('description'),
-            existing_cover=request.form.get('existing_cover'),
-        )
-        if story is not None:
-            flash(message, 'success')
-            return redirect(url_for('admin.modify_content'))
-        flash(message, 'error')
-        return render_template('ContentManagement/story_form.html', images=library_images())
+        try:
+            story = story_service.add_story(
+                title=request.form.get('story_title'),
+                level=request.form.get('level'),
+                cover_image=request.files.get('cover_image'),
+                pages=_collect_pages(request.form, request.files),
+                description=request.form.get('description'),
+                existing_cover=request.form.get('existing_cover'),
+            )
+        except ServiceError as e:
+            flash(str(e), 'error')
+            return render_template('ContentManagement/story_form.html',
+                                   images=library_images())
+
+        flash('Added ' + story.title, 'success')
+        return redirect(url_for('admin.modify_content'))
 
     return render_template('ContentManagement/story_form.html', images=library_images())
 
@@ -194,17 +198,21 @@ def update_activity(activity_id):
         return redirect(url_for('admin.modify_content'))
 
     if request.method == 'POST':
-        result = activity_service.update_activity(
-            activity_id,
-            title=request.form.get('activity_title'),
-            stem_code=request.form.get('stem_code'),
-            level=request.form.get('level'),
-            cover_image=request.files.get('cover_image'),
-            questions_data=_collect_questions(request.form),
-            description=request.form.get('description'),
-            existing_cover=request.form.get('existing_cover'),
-        )
-        if _flash_result(result, 'Activity updated'):
+        try:
+            activity_service.update_activity(
+                activity_id,
+                title=request.form.get('activity_title'),
+                stem_code=request.form.get('stem_code'),
+                level=request.form.get('level'),
+                cover_image=request.files.get('cover_image'),
+                questions_data=_collect_questions(request.form),
+                description=request.form.get('description'),
+                existing_cover=request.form.get('existing_cover'),
+            )
+        except ServiceError as e:
+            flash(str(e), 'error')
+        else:
+            flash('Activity updated', 'success')
             return redirect(url_for('admin.modify_content'))
 
     return render_template('ContentManagement/activity_form.html',
@@ -220,16 +228,20 @@ def update_story(story_id):
         return redirect(url_for('admin.modify_content'))
 
     if request.method == 'POST':
-        result = story_service.update_story(
-            story_id,
-            title=request.form.get('story_title'),
-            level=request.form.get('level'),
-            cover_image=request.files.get('cover_image'),
-            pages=_collect_pages(request.form, request.files),
-            description=request.form.get('description'),
-            existing_cover=request.form.get('existing_cover'),
-        )
-        if _flash_result(result, 'Story updated'):
+        try:
+            story_service.update_story(
+                story_id,
+                title=request.form.get('story_title'),
+                level=request.form.get('level'),
+                cover_image=request.files.get('cover_image'),
+                pages=_collect_pages(request.form, request.files),
+                description=request.form.get('description'),
+                existing_cover=request.form.get('existing_cover'),
+            )
+        except ServiceError as e:
+            flash(str(e), 'error')
+        else:
+            flash('Story updated', 'success')
             return redirect(url_for('admin.modify_content'))
 
     return render_template('ContentManagement/story_form.html',
@@ -239,14 +251,24 @@ def update_story(story_id):
 @admin_bp.route('/admin/delete_activity/<int:activity_id>', methods=['GET', 'POST'])
 @admin_required
 def delete_activity(activity_id):
-    flash(activity_service.delete_activity(activity_id))
+    try:
+        activity = activity_service.delete_activity(activity_id)
+    except ServiceError as e:
+        flash(str(e), 'error')
+    else:
+        flash('Deleted ' + activity.title, 'success')
     return redirect(url_for('admin.modify_content'))
 
 
 @admin_bp.route('/admin/delete_story/<int:story_id>', methods=['GET', 'POST'])
 @admin_required
 def delete_story(story_id):
-    flash(story_service.delete_story(story_id))
+    try:
+        story = story_service.delete_story(story_id)
+    except ServiceError as e:
+        flash(str(e), 'error')
+    else:
+        flash('Deleted ' + story.title, 'success')
     return redirect(url_for('admin.modify_content'))
 
 

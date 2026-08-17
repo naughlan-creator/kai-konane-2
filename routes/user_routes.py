@@ -1,18 +1,29 @@
-from flask import session, Blueprint, request, jsonify, flash, render_template, redirect, url_for, current_app
-from services.user_service import UserService
-from services.preschool_service import PreschoolService
-from services.teacher_service import TeacherService
-from models.user import User, Role
-from models.parent import Parent, EducationLevel
-from models.teacher import Teacher
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from flask_login import LoginManager, current_user, login_required, login_user, logout_user
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from config import app, db
+from level_predictor import predict_child_level
 from models.child import Child, Level, LunchType
 from models.learning_plan import LearningPlan
-from level_predictor import predict_child_level
-from flask_login import login_user, logout_user, login_required, LoginManager, current_user
-from werkzeug.security import check_password_hash, generate_password_hash
-from config import app, db
-from routes.auth import admin_required, parent_required, teacher_required, child_required
-
+from models.parent import EducationLevel, Parent
+from models.teacher import Teacher
+from models.user import Role, User
+from routes.auth import admin_required, child_required, parent_required, teacher_required
+from services.errors import ServiceError
+from services.preschool_service import PreschoolService
+from services.teacher_service import TeacherService
+from services.user_service import UserService
 
 user_bp = Blueprint('user', __name__, url_prefix='/users')
 
@@ -79,20 +90,24 @@ def _serialize_user(user):
 @user_bp.route('/update/<int:id>', methods=['PUT'])
 @admin_required
 def update_user(id):
+    # This is the shape the api will use for every endpoint on Day 2: let the
+    # service raise, map the exception's status, and never string-match.
     payload = request.get_json(silent=True) or {}
-    result = user_service.update_user(id, payload.get('username'), payload.get('email'))
-    if result == "User updated!!!":
-        return jsonify(result), 200
-    return jsonify(result), 404
+    try:
+        user = user_service.update_user(id, payload.get('username'), payload.get('email'))
+    except ServiceError as e:
+        return jsonify({'error': str(e)}), e.status
+    return jsonify(_serialize_user(user)), 200
 
 
 @user_bp.route('/delete/<int:id>', methods=['DELETE'])
 @admin_required
 def delete_user(id):
-    result = user_service.delete_user(id)
-    if result == "User deleted!!!":
-        return jsonify(result), 200
-    return jsonify(result), 404
+    try:
+        user_service.delete_user(id)
+    except ServiceError as e:
+        return jsonify({'error': str(e)}), e.status
+    return jsonify({'status': 'deleted', 'id': id}), 200
 
 
 @user_bp.route('/view_children')

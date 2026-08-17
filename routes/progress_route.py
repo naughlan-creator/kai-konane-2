@@ -1,16 +1,16 @@
-from flask import Blueprint, jsonify, render_template, request, redirect, url_for, flash
-from flask_login import login_required, current_user
-from models.user import Role
-from services.progress_service import ProgressService
-from services.result_service import ResultService
+from flask import Blueprint, jsonify, render_template
+from flask_login import current_user, login_required
+from sqlalchemy import func
+
+from config import db
 from models.activity import Activity, StemCode
 from models.result import Result
-from models.child import Child
-from services.activity_service import ActivityService
-from services.story_service import StoryService
-from sqlalchemy import func
-from config import db
+from models.user import Role
 from routes.auth import parent_required, teacher_required
+from services.activity_service import ActivityService
+from services.progress_service import ProgressService
+from services.result_service import ResultService
+from services.story_service import StoryService
 
 progress_bp = Blueprint('progress', __name__)
 

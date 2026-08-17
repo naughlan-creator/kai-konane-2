@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template
+
 from routes.auth import child_required
 
 learning_content_bp = Blueprint('learning_content', __name__)

@@ -1,9 +1,10 @@
-from flask import Blueprint, request, url_for, redirect, render_template, jsonify, flash
-from services.story_service import StoryService
-from services.learning_plan_service import LearningPlanService
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
 from models.child import Level
-from flask_login import login_required, current_user
 from routes.auth import child_required
+from services.learning_plan_service import LearningPlanService
+from services.story_service import StoryService
 
 story_bp = Blueprint('story', __name__)
 story_service = StoryService()

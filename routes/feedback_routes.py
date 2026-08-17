@@ -1,11 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
-from flask_login import login_required, current_user
-from models.feedback import Feedback
-from models.user import User, Role
-from models.child import Child
-from services.feedback_service import FeedbackService
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
+
+from models.user import Role
 from routes.auth import roles_required
-from config import db
+from services.feedback_service import FeedbackService
 
 feedback_bp = Blueprint('feedback', __name__, url_prefix='/feedbacks')
 
@@ -15,13 +13,19 @@ feedback_service = FeedbackService()
 correspondent_required = roles_required(Role.PARENT, Role.TEACHER)
 
 
-def _children_for(user):
-    """The learners this user may attach feedback to."""
+def _correspondents_for(user):
+    """Who this user may exchange feedback with, and about whom"""
+    pairs = {}
     if user.role == Role.PARENT:
-        return Child.query.filter_by(parent_id=user.id).all()
-    if user.role == Role.TEACHER:
-        return Child.query.filter_by(teacher_id=user.id).all()
-    return []
+        for child in user.children:
+            if child.teacher:
+                pairs.setdefault(child.teacher, []).append(child)
+    elif user.role == Role.TEACHER:
+        for child in user.students:
+            if child.parent:
+                pairs.setdefault(child.parent, []).append(child)
+    return [{'person': person, 'shared_children': kids}
+            for person, kids in pairs.items()]
 
 
 @feedback_bp.route('/feedback')
@@ -39,18 +43,19 @@ def home():
 @correspondent_required
 def write_feedback():
     recipient_id = request.args.get('recipient_id')
+    correspondents = _correspondents_for(current_user)
     if recipient_id:
+        allowed = {c['person'].id for c in correspondents}
+        if not str(recipient_id).isdigit() or int(recipient_id) not in allowed:
+            flash("You can only message your child's teacher.", "error")
+            return redirect(url_for('feedback.write_feedback'))
+        shared = next(c['shared_children'] for c in correspondents
+                      if c['person'].id == int(recipient_id))
         return render_template('FeedbackSystem/write_feedback.html',
-                               recipient_id=recipient_id,
-                               children=_children_for(current_user))
+                               recipient_id=recipient_id, children=shared)
 
-    if current_user.role == Role.PARENT:
-        recipients = User.query.filter_by(role=Role.TEACHER).all()
-    else:
-        recipients = User.query.filter_by(role=Role.PARENT).all()
     return render_template('FeedbackSystem/select_feedback_receiver.html',
-                           recipients=recipients,
-                           user_role=current_user.role.name)
+                           recipients=correspondents)
 
 @feedback_bp.route('/feedback/submit', methods=['POST'])
 @correspondent_required
@@ -66,18 +71,23 @@ def submit_feedback():
         flash("Please fill in a subject and a message", "error")
         return redirect(url_for('feedback.write_feedback', recipient_id=recipient_id))
 
-    recipient = db.session.get(User, int(recipient_id)) if str(recipient_id).isdigit() else None
-    if recipient is None or recipient.role not in (Role.PARENT, Role.TEACHER):
-        flash("That recipient does not exist", "error")
+    correspondents = _correspondents_for(current_user)
+    allowed = {c['person'].id for c in correspondents}
+    if not str(recipient_id).isdigit() or int(recipient_id) not in allowed:
+        flash("That recipient is not available to you", "error")
         return redirect(url_for('feedback.write_feedback'))
+    recipient_id = int(recipient_id)
 
+    shared = next(c['shared_children'] for c in correspondents
+                  if c['person'].id == recipient_id)
     if child_id is not None:
-        allowed_ids = {child.id for child in _children_for(current_user)}
-        if int(child_id) not in allowed_ids:
-            flash("You can only send feedback about your own learners", "error")
-            return redirect(url_for('feedback.write_feedback'))
+        allowed_children = {child.id for child in shared}
+        if not child_id.isdigit() or int(child_id) not in allowed_children:
+            flash("You can only send feedback about a shared learner", "error")
+            return redirect(url_for('feedback.write_feedback', recipient_id=recipient_id))
+        child_id = int(child_id)
 
-    feedback_service.add_feedback(current_user.id, recipient.id, subject, content, child_id)
+    feedback_service.add_feedback(current_user.id, recipient_id, subject, content, child_id)
     flash("Feedback sent successfully")
     return redirect(url_for('feedback.feedback_home'))
 
@@ -91,17 +101,11 @@ def view_feedback():
 @feedback_bp.route('/feedback/past')
 @correspondent_required
 def past_feedback():
-    # The history: everything sent and everything received, read or not. This
-    # used to filter received messages to isRead=False, so a message vanished
-    # from the history the moment it was opened.
-    sent_feedbacks = feedback_service.get_feedbacks_by_sender_id(current_user.id)
-    received_feedbacks = feedback_service.get_feedbacks_by_recipient_id(current_user.id)
-    all_feedbacks = sent_feedbacks + received_feedbacks
-    all_feedbacks.sort(key=lambda x: x.sent_at, reverse=True)
-    return render_template('FeedbackSystem/past_feedback.html', feedbacks=all_feedbacks)
+    feedbacks = feedback_service.get_conversation(current_user.id)
+    return render_template('FeedbackSystem/past_feedback.html', feedbacks=feedbacks)
 
 @feedback_bp.route('/feedback/read/<int:feedback_id>')
-@login_required
+@correspondent_required
 def read_feedback(feedback_id):
     feedback = feedback_service.get_feedback(feedback_id)
     if feedback and (feedback.recipient_id == current_user.id or feedback.sender_id == current_user.id):
@@ -110,4 +114,4 @@ def read_feedback(feedback_id):
         return render_template('FeedbackSystem/read_feedback.html', feedback=feedback)
 
     flash("You don't have permission to read this feedback")
-    return redirect(url_for('feedback.view_feedback'))
+    return redirect(url_for('feedback.feedback_home'))
