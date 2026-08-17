@@ -18,7 +18,9 @@ This table is the honest picture of what exists today.
 | `/healthz`, `/readyz` | **built** (#6) |
 | JSON serializers implementing the four rules | **built** (#7) |
 | JSON content endpoints — activities, stories | **built** (#7) |
-| JSON endpoints — auth, users, plans, progress, feedback, preschools | in progress (#7) |
+| JSON endpoints — auth, users, plans, progress, feedback, preschools | **built** (#7) |
+| Contract tests over every endpoint (`test_api_content.py`, `test_api_domain.py`) | **built** (#7) |
+| Rewards over JSON | deferred — write-only for now, see below |
 | Bearer-token auth between `web` and `api` | planned (#8) |
 | `services/web` calling `api` over HTTP | planned (#9) |
 | `gateway`, Dockerfiles, compose | planned (#10) |
@@ -194,12 +196,23 @@ split.
 | Method | Path | Purpose | Auth | Embeds | Called by (web) |
 |---|---|---|---|---|---|
 | GET | `/users/{id}` | Rehydrate the session user | Token | role, children[] or students[] | `user.load_user` |
-| GET | `/users` | List all users | Admin | — | `admin.view_user_data` |
-| PATCH | `/users/{id}` | Update username/email/password/role | Token | — | `admin.edit_user`, `profile.update_profile` |
+| GET | `/users` | List all users (account fields only) | Admin | — | `admin.view_user_data` |
+| PATCH | `/users/{id}` | Update username, email or password | Token | — | `admin.edit_user`, `profile.update_profile` |
 | DELETE | `/users/{id}` | Delete a user | Admin | — | `admin.delete_user` |
-| GET | `/parents/{id}/children` | A parent's children | Token | learning_plan | `user.view_children`, `profile.profile` |
-| GET | `/teachers/{id}/students` | A teacher's learners | Token | learning_plan | `user.view_learners`, `learning_plan.manage_learning_plans` |
+| GET | `/parents/{id}/children` | A parent's children | Token | profile fields | `user.view_children`, `profile.profile` |
+| PATCH | `/parents/{id}` | Update a parent's profile | Token | — | `profile.update_profile` |
+| GET | `/teachers` | List teachers, to pick one per child at signup | Token | — | `user.parent_signup_3` |
+| GET | `/teachers/{id}/students` | A teacher's learners | Token | profile fields | `user.view_learners`, `learning_plan.manage_learning_plans` |
+| PATCH | `/teachers/{id}` | Update a teacher's profile | Token | — | `profile.update_profile` |
+| GET | `/children` | List, filtered by `?parent_id=` or `?teacher_id=` | Token | profile fields | `user.view_children`, `user.view_learners` |
+| GET | `/children/{id}` | One child | Token | profile fields | `profile.child_profile` |
 | PATCH | `/children/{id}` | Update a child's profile | Token | — | `profile.update_child_profile` |
+
+A child's learning plan is **not** embedded in these payloads even though several
+templates show a plan next to a name. Embedding it would make every list view
+carry five enums per child that most callers ignore, and a plan changes on a
+different schedule to a profile. `GET /learning-plans/child/{id}` is a separate
+call for that reason.
 
 ### Preschools
 
@@ -291,6 +304,40 @@ POST /parents        →  201 Created
   ]
 }
 ```
+
+Either the whole family is created or none of it is. A half-registered family
+would leave children with no learning plan, and a child with no plan can see no
+content at all — the app would appear to work and show an empty library. Every
+child spec is validated before the first `INSERT`, so a bad second child does not
+leave the parent and the first child behind.
+
+Uniqueness is checked twice on purpose. `GET /users/availability` is **advisory**
+— it exists so a four-screen wizard can fail on screen two instead of screen
+four — and `RegistrationService` re-checks inside the transaction and raises
+`Conflict` (409). Treating the advisory check as authoritative is a race.
+
+### Rewards stay write-only
+
+Rewards are issued by `POST /stories/{id}/complete` and never read back. There is
+no `GET /rewards` in the contract because nothing displays them yet: whether
+they surface as badges on the child's home screen is an open product decision. A
+read endpoint added now would be a guess at the shape that screen needs, and a
+wrong guess in the contract is more expensive than a missing one.
+
+### Failure responses
+
+Every endpoint fails through the same three mappings, so `web` needs one error
+path, not thirty:
+
+| Status | Raised by | Example |
+|---|---|---|
+| 400 | `ValidationError` | `{"error": "teacher_id must be a number"}` |
+| 401 | `POST /auth/login` only | `{"error": "Invalid username or password"}` |
+| 404 | `NotFound`, or no such route | `{"error": "No such user"}` |
+| 409 | `Conflict` | `{"error": "Username 'parent' is already taken"}` |
+
+The 401 message is deliberately identical for an unknown username and a wrong
+password. Distinguishing them turns the login form into a username oracle.
 
 ## Mermaid diagram
 ```mermaid

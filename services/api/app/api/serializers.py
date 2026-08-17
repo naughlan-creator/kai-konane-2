@@ -167,6 +167,82 @@ def result_out(result, activity=False, child=False):
     return out
 
 
+# ------------------------------------------------------------------ people
+
+def user_out(user, profile=True, relations=False):
+    """A user, flat rather than nested by subclass.
+
+    `web` reads `current_user.gender`, `.firstname`, `.education_level` directly
+    in templates, so the subclass fields are merged into one object instead of
+    sitting under a `profile` key. Never includes the password hash.
+    """
+    out = {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'role': enum(user.role),
+        'type': user.type,
+        'display_name': user.display_name,
+    }
+    if not profile:
+        return out
+
+    # Present only on the relevant subclass; absent keys are meaningful.
+    for field in ('firstname', 'lastname', 'age', 'gender', 'race_ethnicity',
+                  'name'):
+        if hasattr(user, field):
+            out[field] = getattr(user, field)
+    for field in ('education_level', 'lunch_type', 'parent_education',
+                  'recommended_level'):
+        if hasattr(user, field):
+            out[field] = enum(getattr(user, field))
+    if hasattr(user, 'preschool_id'):
+        out['preschool_id'] = user.preschool_id
+    if hasattr(user, 'parent_id'):
+        out['parent_id'] = user.parent_id
+    if hasattr(user, 'teacher_id'):
+        out['teacher_id'] = user.teacher_id
+
+    if relations:
+        # web's role guards need these: a parent's children and a teacher's
+        # learners. Embedded on the session-rehydration endpoint so the
+        # user_loader needs one call, not three.
+        if hasattr(user, 'children'):
+            out['children'] = [user_out(c, relations=False) for c in user.children]
+        if hasattr(user, 'students'):
+            out['students'] = [user_out(c, relations=False) for c in user.students]
+    return out
+
+
+def preschool_out(preschool, members=False):
+    out = {'id': preschool.id, 'name': preschool.name}
+    if members:
+        out['students'] = [user_out(c, relations=False) for c in preschool.students]
+        out['teachers'] = [user_out(t, relations=False) for t in preschool.teachers]
+    return out
+
+
+def feedback_out(message, sender=True):
+    out = {
+        'id': message.id,
+        'subject': message.subject,
+        'message': message.message,
+        'sender_id': message.sender_id,
+        'recipient_id': message.recipient_id,
+        'child_id': message.child_id,
+        'sent_at': iso(message.sent_at),
+        'is_read': message.is_read,
+    }
+    if sender and message.sender is not None:
+        # All three feedback templates read sender.firstname / .lastname.
+        out['sender'] = {
+            'id': message.sender.id,
+            'firstname': getattr(message.sender, 'firstname', None),
+            'lastname': getattr(message.sender, 'lastname', None),
+        }
+    return out
+
+
 def learning_plan_out(plan):
     return {
         'id': plan.id,
