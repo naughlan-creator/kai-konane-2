@@ -5,7 +5,7 @@
       "name": "kai-konane",
       "runtimeExecutable": "venv/Scripts/python.exe",
       "runtimeArgs": ["app.py"],
-      "port": 5000
+      "autoPort": true
     }
   ]
 }
