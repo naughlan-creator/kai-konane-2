@@ -2,8 +2,22 @@
 import click
 
 from config import app, db
-from models import (Activity, Child, Feedback, LearningPlan, Parent, Preschool,
-                    Progress, Result, Reward, Role, StemCode, Story, Teacher, User)
+from models import (
+    Activity,
+    Child,
+    Feedback,
+    LearningPlan,
+    Parent,
+    Preschool,
+    Progress,
+    Result,
+    Reward,
+    Role,
+    StemCode,
+    Story,
+    Teacher,
+    User,
+)
 from seeds import seed_all
 
 
@@ -236,6 +250,7 @@ def import_content(path):
     {"activities": [...], "stories": [...]}
     """
     import json
+
     from seeds import content as content_module
 
     with open(path, encoding='utf-8') as handle:
@@ -245,10 +260,10 @@ def import_content(path):
     content_module.ACTIVITIES = payload.get('activities', [])
     content_module.STORIES = payload.get('stories', [])
     try:
-        from seeds.seeder import seed_content
         # seed_content reads the module attributes, so patching them lets the
         # same insert-and-skip logic serve file imports too.
         import seeds.seeder as seeder_module
+        from seeds.seeder import seed_content
         seeder_module.ACTIVITIES = content_module.ACTIVITIES
         seeder_module.STORIES = content_module.STORIES
         activities, stories = seed_content()

@@ -14,18 +14,19 @@ Training data comes from two places:
   class -- which is why it used to predict BEGINNER for every single child.
 * the app's own database, once children have actually completed activities.
 """
-import pandas as pd
 import os
-import joblib
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sklearn.model_selection import train_test_split
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
+import joblib
+import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sqlalchemy import create_engine, text
 
 current_dir = Path(__file__).resolve().parent
 
@@ -125,7 +126,7 @@ def load_db_data():
 
     # The database stores enum names; the CSV supplies readable values. Map the
     # names onto the same vocabulary before they are combined.
-    from models.child import LunchType, EducationLevel
+    from models.child import EducationLevel, LunchType
     data['lunch_type'] = data['lunch_type'].map(
         lambda v: LunchType[v].value if v in LunchType.__members__ else v)
     data['parent_education'] = data['parent_education'].map(

@@ -1,13 +1,32 @@
 """Builds a complete, working dataset so the app is usable the moment it starts."""
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from config import db
-from models import (Activity, Admin, Answer, Child, EducationLevel, Feedback,
-                    LearningPlan, Level, LunchType, Page, Parent, Preschool,
-                    Progress, Question, Result, Reward, Role, StemCode, Story,
-                    Teacher)
+from models import (
+    Activity,
+    Admin,
+    Answer,
+    Child,
+    EducationLevel,
+    Feedback,
+    LearningPlan,
+    Level,
+    LunchType,
+    Page,
+    Parent,
+    Preschool,
+    Progress,
+    Question,
+    Result,
+    Reward,
+    Role,
+    StemCode,
+    Story,
+    Teacher,
+)
+from utils import utcnow
 
 from .content import ACTIVITIES, STORIES
 
@@ -217,7 +236,7 @@ def seed_demo_activity(demo):
         existing = Result.query.filter_by(child_id=child.id, activity_id=activity.id).first()
         if existing is None:
             db.session.add(Result(child_id=child.id, activity_id=activity.id, score=100.0,
-                                  date_acquired=datetime.utcnow() - timedelta(days=2)))
+                                  date_acquired=utcnow() - timedelta(days=2)))
             db.session.add(Reward(child_id=child.id, activity_id=activity.id,
                                   content='Gold Star'))
         progress = Progress.query.filter_by(child_id=child.id,

@@ -5,11 +5,11 @@ natural key (username, title, name) and left alone rather than duplicated.
 """
 from .content import ACTIVITIES, STORIES
 from .seeder import (
+    seed_admin,
     seed_all,
     seed_content,
-    seed_demo_users,
-    seed_admin,
     seed_demo_activity,
+    seed_demo_users,
 )
 
 __all__ = [

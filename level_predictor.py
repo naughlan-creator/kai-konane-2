@@ -4,13 +4,15 @@ The model is a scikit-learn pipeline trained by ``ml_model.py``. It is trained
 to output a Level *name* ('BEGINNER' / 'INTERMEDIATE' / 'ADVANCED') directly, so
 callers get a ``Level`` back rather than an opaque number.
 """
-import joblib
-from pathlib import Path
-import pandas as pd
-from config import db
-from models.child import Child, Level
 import logging
 import traceback
+from pathlib import Path
+
+import joblib
+import pandas as pd
+
+from config import db
+from models.child import Child, Level
 
 logger = logging.getLogger(__name__)
 
