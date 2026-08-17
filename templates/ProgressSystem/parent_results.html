@@ -87,6 +87,8 @@
     </style>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <div class="header">
         <h1 class="title">Child Results</h1>
         <button onclick="playAndNavigate('back', '{{ url_for('user.parent_home') }}')" class="button">Home</button>

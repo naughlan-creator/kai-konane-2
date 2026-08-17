@@ -8,6 +8,8 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <div class="header">
         <h1 class="title">{{ activity.title }}</h1>
         <button onclick="location.href='{{ url_for('activity.activity_home') }}'" class="button back-btn">Back to Activities</button>

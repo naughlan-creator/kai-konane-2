@@ -880,10 +880,42 @@ textarea { max-width: none; }
     box-shadow: 0 2px 5px rgba(15, 46, 74, 0.08);
 }
 
-.flash-message.error {
+.flash-message.error,
+.flash-message.flash-error {
     background-color: #FDE8E5;
     color: var(--coral-600);
     border-left-color: var(--coral);
+}
+
+.flash-message.flash-warning {
+    background-color: #FDF2D7;
+    color: #8A6116;
+    border-left-color: var(--moon);
+}
+
+/* Toast strip. Fixed at the top so the partial can sit right after <body>
+   and still land in the right place on every page, whatever its layout. */
+.flash-toasts {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    width: min(560px, calc(100% - 32px));
+    margin: 0;
+    padding: 0;
+    transition: opacity 0.5s ease;
+}
+
+.flash-toasts .flash-message {
+    cursor: pointer;
+    box-shadow: var(--shadow-2);
+}
+
+.flash-toasts.flash-fade { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+    .flash-toasts { transition: none; }
 }
 
 /* ----------------------------------------------------- notification modal */

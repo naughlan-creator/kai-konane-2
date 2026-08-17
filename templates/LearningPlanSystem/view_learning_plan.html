@@ -33,6 +33,8 @@
     </style>
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <div class="header">
         <h1 class="title">Learning Plan for {{ child.firstname }} {{ child.lastname }}</h1>
         <button onclick="confirmLogout()" class="logout-btn">Log Out</button>
@@ -122,18 +124,22 @@
         }
 
         function confirmLogout() {
-            fadeOutTeacherMusic().then(() => {
-                playSound('click').then(() => {
-                    const logout = confirm("Are you sure you want to log out?");
-                    if (logout) {
-                        playSound('bye').then(() => {
-                            window.location.href = "{{ url_for('user.logout') }}";
-                        });
-                    } else {
-                        playTeacherMusic();
-                    }
-                });
-            });
+            // Ask first. Gating the dialog behind click.wav made the button feel
+            // dead for over a second, and on a suspended AudioContext the sound
+            // promise never settled so the dialog never opened at all.
+            if (!confirm("Are you sure you want to log out?")) {
+                return;
+            }
+            const logoutUrl = "{{ url_for('user.logout') }}";
+            let leaving = false;
+            const leave = function () {
+                if (leaving) { return; }
+                leaving = true;
+                window.location.href = logoutUrl;
+            };
+            fadeOutTeacherMusic();
+            playSound('bye').then(leave);
+            setTimeout(leave, 1000);   // audio must never strand the user
         }
 
         function initializeViewLearningPlanPage() {

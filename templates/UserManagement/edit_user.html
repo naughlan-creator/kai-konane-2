@@ -8,6 +8,8 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
 </head>
 <body>
+    {% include '_flashes.html' %}
+
     <div class="header">
         <h1 class="title">Edit User</h1>
         <button onclick="location.href='{{ url_for('admin.view_user_data') }}'" class="button">Back to User Data</button>
