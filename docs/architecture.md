@@ -7,9 +7,94 @@
 | `api` | The domain: auth, activities, stories, learning plans, progress, results, rewards, feedback, preschools. Sole owner of the database and all migrations. | Flask + SQLAlchemy + gunicorn | db |
 | `db` | Persistence | PostgreSQL 16 (alpine) | — |
 
+## Build status
+
+The split is being done in stages so the app stays runnable at every commit.
+This table is the honest picture of what exists today.
+
+| Piece | State |
+|---|---|
+| `services/api` package, `create_app()` factory | **built** (#6) |
+| `/healthz`, `/readyz` | **built** (#6) |
+| JSON serializers implementing the four rules | **built** (#7) |
+| JSON content endpoints — activities, stories | **built** (#7) |
+| JSON endpoints — auth, users, plans, progress, feedback, preschools | **built** (#7) |
+| Contract tests over every endpoint (`test_api_content.py`, `test_api_domain.py`) | **built** (#7) |
+| Rewards over JSON | deferred — write-only for now, see below |
+| Bearer-token auth between `web` and `api` | planned (#8) |
+| `services/web` calling `api` over HTTP | planned (#9) |
+| `gateway`, Dockerfiles, compose | planned (#10) |
+
+Until #9 lands, `api` also serves the HTML routes and owns `templates/` and
+`static/`. That is deliberate: `services/web` cannot import `services/api`'s
+models across the directory boundary, so splitting them before the HTTP layer
+exists would leave the app broken for the whole middle of the branch. The
+presentation assets move to `services/web` as part of #9.
+
+## Repository layout
+
+```
+kai-konane/
+├── docs/                       architecture, ADRs, images
+├── gateway/                    nginx config + Dockerfile        (#10)
+└── services/
+    ├── api/
+    │   ├── app/                the importable package
+    │   │   ├── __init__.py     create_app() factory
+    │   │   ├── config.py       settings + unbound extensions
+    │   │   ├── models/         SQLAlchemy models — the only ORM in the repo
+    │   │   ├── services/       domain logic
+    │   │   ├── routes/         blueprints (HTML today, JSON from #7)
+    │   │   ├── seeds/          idempotent seed data
+    │   │   ├── cli.py          flask seed / check / init-db
+    │   │   ├── level_predictor.py
+    │   │   └── utils.py
+    │   ├── templates/          moves to services/web in #9
+    │   ├── static/             moves to services/web in #9
+    │   ├── migrations/         alembic — owned by api alone
+    │   ├── tests/
+    │   ├── ml_model.py         trains level_prediction_model.joblib
+    │   └── requirements.txt
+    └── web/                    UI service                        (#9)
+```
+
+Two placement rules worth stating, because both caused failures during #6:
+
+- **`templates/` and `static/` sit beside the package, not inside it.** They
+  belong to `web` and are only lodging with `api` until #9, so the factory
+  passes both paths to `Flask()` explicitly. Without that, Flask looks under
+  `app/` and every `render_template` fails.
+- **`config.basedir` is the *service* directory** (`services/api`), not the
+  package directory. `services/media.py` derives the upload path from it and
+  `level_predictor.py` finds the `.joblib` through it.
+
 ## Design rules
-**Design rule:** only `api` opens a database connection. The acceptance test is a grep that returns nothing:
-grep -rn "sqlalchemy|from models" services/web/
+
+**Only `api` opens a database connection.** The acceptance test is a grep that
+returns nothing:
+
+```bash
+grep -rn "sqlalchemy\|from models" services/web/
+```
+
+### Application factory
+
+`api` is built by `create_app(overrides=None)` rather than a module-level app
+object. Three consequences that are easy to get wrong:
+
+- **Extensions are created unbound** in `config.py` (`db = SQLAlchemy()`,
+  `migrate`, `login_manager`) and attached inside the factory with
+  `init_app(app)`. Binding them at import time is what makes a factory
+  impossible.
+- **Blueprints are imported inside the factory**, never at module scope.
+  `routes` imports `models`, `models` imports `config`; a top-level chain
+  closes that loop and raises on startup.
+- **CLI commands are plain `@click.command` + `@with_appcontext`**, registered
+  by `register_cli(app)`. `@app.cli.command` needs a concrete app and cannot
+  survive a factory.
+
+`overrides` is how tests inject `TESTING` and a throwaway database URI without
+touching the environment.
 
 ### Serialization
 
@@ -23,8 +108,12 @@ grep -rn "sqlalchemy|from models" services/web/
 | Money/score | Plain number | No formatting decisions in the api. |
 
 **Enum comparison rule.** In Jinja, a Python enum compared to a dict is always
-`False` and raises nothing. Every identity comparison compares `.name` to `.name`: 
+`False` and raises nothing — the dropdown simply stops preselecting. Every
+identity comparison compares `.name` to `.name`:
+
+```jinja
 {% if level.name == user.education_level.name %}selected{% endif %}
+```
 
 
 ### Authentication
@@ -45,6 +134,54 @@ grep -rn "sqlalchemy|from models" services/web/
 in the response, derived from the deepest attribute chain in the consuming
 template.
 
+### The `/api` prefix is not stripped
+
+The api mounts its JSON blueprint at `/api` **internally**, and the gateway
+forwards without stripping the prefix:
+
+```nginx
+location /api/ {
+  proxy_pass http://api:5000;   # no trailing slash -- keeps /api
+}
+```
+
+A trailing slash on `proxy_pass` would strip it, so the api would receive
+`/activities`. That is unusable during the transition, because the HTML routes
+still own `/activities` and `/stories` until #9 and the two would collide. It is
+also simply easier to reason about: a path is identical whether you curl the api
+directly or go through the gateway.
+
+### Error shape
+
+Every error is `{"error": "<message safe to show a user>"}` with the status
+carried by the `ServiceError` subclass — `ValidationError` 400, `NotFound` 404,
+`Conflict` 409. Routes raise; a blueprint error handler converts. No route needs
+a try/except.
+
+Routing failures (404, 405) are handled **app-wide** with a path check, not on
+the blueprint. URL matching happens before Flask knows which blueprint owns a
+path, so `@api_bp.errorhandler(404)` never fires for an unmatched `/api` path
+and the client would get Flask's HTML error page.
+
+### Authentication is a seam, not yet a wall
+
+`app/api/auth_seam.py` defines `@token_required`, currently a **no-op**. It
+marks every endpoint the contract lists as `Token` so #8 becomes a one-file
+change rather than an audit. This is safe only because nothing routes to
+`/api/*` from outside until the gateway arrives in #10, and #8 lands first.
+
+> **#8 must replace the body of `token_required` before #10 merges.** An
+> unauthenticated `/api/*` behind a public gateway is a writable database.
+
+### Exposed answer keys
+
+`GET /api/activities/{id}` includes `answers[].is_correct`, because
+`activity_page.html` uses it to play the right sound on selection. Scoring is
+server-side, so this does not let a child forge a score — but it does let anyone
+reading the payload see the answers. Fixing it properly means checking answers
+one at a time server-side. Recorded here rather than fixed; it predates the
+split.
+
 ### Auth and registration
 
 | Method | Path | Purpose | Auth | Embeds | Called by (web) |
@@ -59,12 +196,23 @@ template.
 | Method | Path | Purpose | Auth | Embeds | Called by (web) |
 |---|---|---|---|---|---|
 | GET | `/users/{id}` | Rehydrate the session user | Token | role, children[] or students[] | `user.load_user` |
-| GET | `/users` | List all users | Admin | — | `admin.view_user_data` |
-| PATCH | `/users/{id}` | Update username/email/password/role | Token | — | `admin.edit_user`, `profile.update_profile` |
+| GET | `/users` | List all users (account fields only) | Admin | — | `admin.view_user_data` |
+| PATCH | `/users/{id}` | Update username, email or password | Token | — | `admin.edit_user`, `profile.update_profile` |
 | DELETE | `/users/{id}` | Delete a user | Admin | — | `admin.delete_user` |
-| GET | `/parents/{id}/children` | A parent's children | Token | learning_plan | `user.view_children`, `profile.profile` |
-| GET | `/teachers/{id}/students` | A teacher's learners | Token | learning_plan | `user.view_learners`, `learning_plan.manage_learning_plans` |
+| GET | `/parents/{id}/children` | A parent's children | Token | profile fields | `user.view_children`, `profile.profile` |
+| PATCH | `/parents/{id}` | Update a parent's profile | Token | — | `profile.update_profile` |
+| GET | `/teachers` | List teachers, to pick one per child at signup | Token | — | `user.parent_signup_3` |
+| GET | `/teachers/{id}/students` | A teacher's learners | Token | profile fields | `user.view_learners`, `learning_plan.manage_learning_plans` |
+| PATCH | `/teachers/{id}` | Update a teacher's profile | Token | — | `profile.update_profile` |
+| GET | `/children` | List, filtered by `?parent_id=` or `?teacher_id=` | Token | profile fields | `user.view_children`, `user.view_learners` |
+| GET | `/children/{id}` | One child | Token | profile fields | `profile.child_profile` |
 | PATCH | `/children/{id}` | Update a child's profile | Token | — | `profile.update_child_profile` |
+
+A child's learning plan is **not** embedded in these payloads even though several
+templates show a plan next to a name. Embedding it would make every list view
+carry five enums per child that most callers ignore, and a plan changes on a
+different schedule to a profile. `GET /learning-plans/child/{id}` is a separate
+call for that reason.
 
 ### Preschools
 
@@ -132,7 +280,8 @@ template.
 
 | Method | Path | Purpose | Auth | Embeds | Called by |
 |---|---|---|---|---|---|
-| GET | `/healthz` | Liveness — process is up | — | — | compose healthcheck, UptimeRobot |
+| GET | `/healthz` | Liveness — process is up. Never touches the database, so a slow query cannot look like a dead process and get the container killed. Returns `status`, `version`, `uptime_s`. | — | — | compose healthcheck, UptimeRobot |
+| GET | `/readyz` | Readiness — the database answers. `503` when it does not. This is what compose `depends_on` waits for. | — | — | compose healthcheck |
 
 ### Registering a family
 
@@ -156,6 +305,40 @@ POST /parents        →  201 Created
 }
 ```
 
+Either the whole family is created or none of it is. A half-registered family
+would leave children with no learning plan, and a child with no plan can see no
+content at all — the app would appear to work and show an empty library. Every
+child spec is validated before the first `INSERT`, so a bad second child does not
+leave the parent and the first child behind.
+
+Uniqueness is checked twice on purpose. `GET /users/availability` is **advisory**
+— it exists so a four-screen wizard can fail on screen two instead of screen
+four — and `RegistrationService` re-checks inside the transaction and raises
+`Conflict` (409). Treating the advisory check as authoritative is a race.
+
+### Rewards stay write-only
+
+Rewards are issued by `POST /stories/{id}/complete` and never read back. There is
+no `GET /rewards` in the contract because nothing displays them yet: whether
+they surface as badges on the child's home screen is an open product decision. A
+read endpoint added now would be a guess at the shape that screen needs, and a
+wrong guess in the contract is more expensive than a missing one.
+
+### Failure responses
+
+Every endpoint fails through the same three mappings, so `web` needs one error
+path, not thirty:
+
+| Status | Raised by | Example |
+|---|---|---|
+| 400 | `ValidationError` | `{"error": "teacher_id must be a number"}` |
+| 401 | `POST /auth/login` only | `{"error": "Invalid username or password"}` |
+| 404 | `NotFound`, or no such route | `{"error": "No such user"}` |
+| 409 | `Conflict` | `{"error": "Username 'parent' is already taken"}` |
+
+The 401 message is deliberately identical for an unknown username and a wrong
+password. Distinguishing them turns the login form into a username oracle.
+
 ## Mermaid diagram
 ```mermaid
 flowchart LR
@@ -174,7 +357,7 @@ contract is incomplete.
 | Blueprint | Routes | Calls |
 |---|---|---|
 | `user` | 20 | `POST /auth/login`, `GET /users/availability`, `POST /parents`, `POST /teachers`, `GET /users/{id}`, `GET /preschools`, `GET /teachers/{id}/students` |
-| `admin` | 12 | activities and stories CRUD, `GET /users`, `PATCH /users/{id}`, `DELETE /users/{id}` |
+| `admin` | 13 | activities and stories CRUD, `GET /users`, `PATCH /users/{id}`, `DELETE /users/{id}` |
 | `feedback` | 7 | the five `/feedback` endpoints, `GET /parents/{id}/children` |
 | `preschool` | 5 | the five `/preschools` endpoints |
 | `activity` | 5 | `GET /activities`, `GET /activities/{id}`, `POST /activities/{id}/submit`, `POST /activities/{id}/progress` |
@@ -195,11 +378,32 @@ has no such route — the parent and teacher progress charts 404 from a service
 that was never touched.
 
 It already returns JSON, so it moves nearly verbatim to
-`GET /children/{id}/stem-levels`. `static/js/stem_graph.js` line 63 must change
-with it: fetch(/api/children/${childId}/stem-levels)
+`GET /children/{id}/stem-levels`. `static/js/stem_graph.js` must change with it:
 
+```js
+fetch(`/api/children/${childId}/stem-levels`)
+```
 
 ### Case-sensitive template paths
+
 Container filesystems are case-sensitive; Windows is not. Verify every
 `render_template()` string matches the file on disk exactly before building
-images.
+images. `view_learning_Plan.html` was caught this way — it worked on NTFS and
+would have been a `TemplateNotFound` inside the container.
+
+### What broke during #6, and will again during #9
+
+The api move surfaced four failures that `git mv` cannot warn about. #9 moves
+`routes/`, `templates/` and `static/` into `services/web`, so expect the same
+shapes:
+
+| Symptom | Cause |
+|---|---|
+| `ImportError: cannot import name 'app'` | Modules bound to a module-level `app` at import time — `login_manager.init_app(app)`, `@app.cli.command`. Both had to move into the factory. |
+| Every `render_template` 500s | `Flask(__name__)` looks for `templates/` inside the package. Pass `template_folder` and `static_folder` explicitly. |
+| A feature silently degrades | `level_predictor.py` resolved the `.joblib` beside itself. After the move the file was gone, prediction returned `None`, and every child silently fell back to `BEGINNER`. Seeding still reported success — **the exit code was zero**. Path-dependent assets must resolve through `config.basedir`, not `__file__`. |
+| `NameError: name 'routes' is not defined` | A sed-based import rewrite turned `import routes` into `import app.routes`, which binds `app`, not `routes`. `from X import Y` rewrites safely; `import X` plus `X.attr` does not. |
+
+The third is the one to watch for. A move that breaks an import fails loudly; a
+move that breaks a *path* returns a default and keeps going. After #9, verify
+behaviour, not just exit codes.

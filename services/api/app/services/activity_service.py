@@ -274,6 +274,26 @@ class ActivityService:
     def get_completed_activities(self, child_id):
         return Progress.query.filter_by(child_id=child_id, completed=True).all()
 
+    def get_activities_for_strand(self, stem_code, level):
+        """Activities in one STEM strand at or below a level.
+
+        Filtering by rank rather than equality: a child at INTERMEDIATE should
+        still be able to revisit BEGINNER work.
+        """
+        allowed = [candidate for candidate in Level if candidate.rank <= level.rank]
+        return (Activity.query
+                .filter(Activity.stem_code == stem_code, Activity.level.in_(allowed))
+                .order_by(Activity.level, Activity.id)
+                .all())
+
+    def get_progress_for_child(self, child_id):
+        """Every progress row for one child, for bulk attachment to a listing.
+
+        The api attaches progress to each card from this single result; looking
+        it up per card would be an N+1 across the whole page.
+        """
+        return Progress.query.filter_by(child_id=child_id).all()
+
 
 
 def _as_int(value):

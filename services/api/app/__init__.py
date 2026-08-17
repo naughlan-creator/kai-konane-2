@@ -10,6 +10,7 @@ def create_app(overrides=None):
     # Imported inside the factory, not at module scope: routes import models,
     # models import config, and config imports back into the package -- a
     # top-level import chain closes that loop and raises on startup.
+    from app.api import api_bp, register_error_handlers
     from app.cli import register_cli
     from app.routes import (
         activity_bp,
@@ -37,6 +38,9 @@ def create_app(overrides=None):
         learning_plan_bp,
         progress_bp,
         health_bp,
+        # The JSON API, mounted at /api. The HTML blueprints above leave for
+        # services/web in #9; this one stays.
+        api_bp,
     ):
         app.register_blueprint(blueprint)
 
@@ -44,6 +48,7 @@ def create_app(overrides=None):
     def index():
         return render_template('index.html')
 
+    register_error_handlers(app)
     register_cli(app)
 
     return app
