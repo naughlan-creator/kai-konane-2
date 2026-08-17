@@ -1,17 +1,11 @@
-from models.user import User
-from werkzeug.security import generate_password_hash
 from config import db as default_db
+from models.user import User
+from services.errors import Conflict, NotFound
+
 
 class UserService:
     def __init__(self, db=None):
         self.db = db or default_db
-
-    def add_user(self, user):
-        self.db.session.add(user)
-        self.db.session.commit()
-        if self.get_user(user.id):
-            return "User added!!!"
-        return "User not added!!!"
 
     def get_user(self, user_id):
         return self.db.session.get(User, user_id)
@@ -20,42 +14,53 @@ class UserService:
         return User.query.filter_by(username=username).first()
 
     def get_users(self):
-        return User.query.all()
+        return User.query.order_by(User.id).all()
+
+    def _require(self, user_id):
+        user = self.get_user(user_id)
+        if user is None:
+            raise NotFound("That user no longer exists")
+        return user
+
+    def _assert_available(self, user_id, username=None, email=None):
+        """Usernames and emails are unique; say which one collided."""
+        if username and User.query.filter(User.username == username,
+                                          User.id != user_id).first():
+            raise Conflict("That username is already taken")
+        if email and User.query.filter(User.email == email,
+                                       User.id != user_id).first():
+            raise Conflict("That email address is already in use")
 
     def update_user(self, user_id, username=None, email=None):
-        existing_user = self.get_user(user_id)
-        if not existing_user:
-            return "User not updated!!!"
+        user = self._require(user_id)
+        self._assert_available(user_id, username, email)
         if username:
-            existing_user.username = username
+            user.username = username
         if email:
-            existing_user.email = email
+            user.email = email
         self.db.session.commit()
-        return "User updated!!!"
+        return user
 
     def delete_user(self, user_id):
-        user = self.get_user(user_id)
-        if user:
-            self.db.session.delete(user)
-            self.db.session.commit()
-            return "User deleted!!!"
-        return "User not deleted!!!"
+        user = self._require(user_id)
+        self.db.session.delete(user)
+        self.db.session.commit()
+        return user
 
     def update_user_profile(self, user_id, username, email, password=None):
-        user = self.get_user(user_id)
-        if not user:
-            return "User not found"
+        user = self._require(user_id)
+        self._assert_available(
+            user_id,
+            username if username and username != user.username else None,
+            email if email and email != user.email else None,
+        )
 
-        if username and username != user.username:
-            if User.query.filter(User.username == username, User.id != user_id).first():
-                return "That username is already taken"
+        if username:
             user.username = username
-        if email and email != user.email:
-            if User.query.filter(User.email == email, User.id != user_id).first():
-                return "That email is already in use"
+        if email:
             user.email = email
         if password:
-            user.password = generate_password_hash(password)
+            user.set_password(password)
 
         self.db.session.commit()
-        return "Profile updated successfully"
+        return user

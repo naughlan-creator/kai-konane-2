@@ -1,8 +1,8 @@
-from models.learning_plan import LearningPlan
-from models.activity import Activity, StemCode
-from models.child import Child, Level
-from models.story import Story
 from config import db as default_db
+from models.activity import Activity, StemCode
+from models.child import Level
+from models.learning_plan import LearningPlan
+from models.story import Story
 
 # Every field on a learning plan, in the order the forms present them.
 PLAN_FIELDS = ('science_level', 'technology_level', 'engineering_level',
@@ -41,26 +41,6 @@ class LearningPlanService:
 
         self.db.session.commit()
         return learning_plan
-
-    def create_initial_learning_plan(self, child_id):
-        """Give a newly registered child a plan based on the level model."""
-        from level_predictor import predict_child_level
-
-        if self.get_learning_plan_by_child(child_id) is not None:
-            return True
-
-        predicted_level = predict_child_level(child_id) or Level.BEGINNER
-
-        try:
-            self.create_learning_plan(
-                child_id,
-                predicted_level, predicted_level, predicted_level,
-                predicted_level, predicted_level,
-            )
-            return True
-        except Exception:
-            self.db.session.rollback()
-            return False
 
     def get_learning_plan(self, learning_plan_id):
         return self.db.session.get(LearningPlan, learning_plan_id)
@@ -116,7 +96,7 @@ class LearningPlanService:
 
         submitted = (science_level, technology_level, engineering_level,
                      math_level, story_level)
-        for field, value in zip(PLAN_FIELDS, submitted):
+        for field, value in zip(PLAN_FIELDS, submitted, strict=True):
             level = Level.coerce(value, getattr(learning_plan, field))
             if level is None:
                 return None
@@ -124,14 +104,6 @@ class LearningPlanService:
 
         self.db.session.commit()
         return learning_plan
-
-    def delete_learning_plan(self, learning_plan_id):
-        learning_plan = self.get_learning_plan(learning_plan_id)
-        if learning_plan:
-            self.db.session.delete(learning_plan)
-            self.db.session.commit()
-            return True
-        return False
 
     def recommend_activities(self, child_id):
         """Content at or below the child's level for each strand."""
