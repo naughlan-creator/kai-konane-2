@@ -52,4 +52,14 @@ def register_error_handlers(app):
 
 # Imported for their side effect of registering routes on api_bp. Must come
 # after api_bp exists, and are the reason this file has no other logic.
-from app.api import content  # noqa: E402,F401
+# E402 is not in ruff's default select set but is in the `select = ["E", ...]`
+# config planned for Day 3, so it stays in the directive.
+from app.api import (  # noqa: E402,F401
+    auth,
+    content,
+    feedback,
+    plans,
+    preschools,
+    progress,
+    users,
+)
