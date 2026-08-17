@@ -18,6 +18,31 @@ class ResultService:
                 .order_by(Result.date_acquired.desc())
                 .all())
 
+    def get_stem_levels(self, child_id):
+        """Mean score per STEM strand for one child, strands with no attempts
+        reported as 0.
+
+        Moved out of the route because the gateway forwards /api/* to this
+        service: the old `/api/child_stem_levels/<id>` on the web side became
+        unreachable the moment nginx sat in front of it.
+        """
+        from sqlalchemy import func
+
+        from app.models.activity import Activity, StemCode
+
+        rows = (self.db.session.query(Activity.stem_code,
+                                      func.avg(Result.score).label('avg_score'))
+                .join(Result, Result.activity_id == Activity.id)
+                .filter(Result.child_id == child_id)
+                .group_by(Activity.stem_code)
+                .all())
+
+        levels = {code.name.lower(): 0 for code in StemCode}
+        for stem_code, average in rows:
+            if stem_code is not None and average is not None:
+                levels[stem_code.name.lower()] = round(average, 2)
+        return levels
+
     def get_results_by_teacher(self, teacher_id):
         """Every attempt by every learner of one teacher, in one query.
 
