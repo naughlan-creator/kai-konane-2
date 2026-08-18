@@ -21,7 +21,7 @@ This table is the honest picture of what exists today.
 | JSON endpoints — auth, users, plans, progress, feedback, preschools | **built** (#7) |
 | Contract tests over every endpoint (`test_api_content.py`, `test_api_domain.py`) | **built** (#7) |
 | Rewards over JSON | deferred — write-only for now, see below |
-| Bearer-token auth between `web` and `api` | planned (#8) |
+| Bearer-token auth between `web` and `api` | **built** (#8) |
 | `services/web` calling `api` over HTTP | planned (#9) |
 | `gateway`, Dockerfiles, compose | planned (#10) |
 
@@ -163,15 +163,58 @@ the blueprint. URL matching happens before Flask knows which blueprint owns a
 path, so `@api_bp.errorhandler(404)` never fires for an unmatched `/api` path
 and the client would get Flask's HTML error page.
 
-### Authentication is a seam, not yet a wall
+### Tokens
 
-`app/api/auth_seam.py` defines `@token_required`, currently a **no-op**. It
-marks every endpoint the contract lists as `Token` so #8 becomes a one-file
-change rather than an audit. This is safe only because nothing routes to
-`/api/*` from outside until the gateway arrives in #10, and #8 lands first.
+`app/api/auth_seam.py` holds the whole of it: `issue_token`, `read_token` and
+the `@token_required` decorator. Every endpoint the contract marks **Token**
+carries the decorator, and a missing one is caught by the parametrised list in
+`tests/test_api_auth.py`.
 
-> **#8 must replace the body of `token_required` before #10 merges.** An
-> unauthenticated `/api/*` behind a public gateway is a writable database.
+**Signed, not encrypted.** The token is an `itsdangerous` payload carrying
+`{uid, role}`. The signature proves the api issued it and that nobody edited it;
+it does **not** hide the contents, which are trivially readable by anyone
+holding the token. Nothing may go in the claims that the bearer should not see.
+
+**Not a JWT.** A JWT would add a dependency and a header of algorithm
+negotiation to solve a problem this system does not have: there is one issuer,
+one verifier and a shared secret. `itsdangerous` is already a Flask dependency,
+and the part that matters — `max_age` enforced at load time, so an old token
+cannot be replayed — is built in.
+
+**`API_TOKEN_SECRET` is separate from `SECRET_KEY`.** `SECRET_KEY` signs `web`'s
+session cookie; `API_TOKEN_SECRET` signs api tokens. Different trust boundaries,
+so rotating one must not force rotating the other, and a leak of the cookie key
+must not let anyone mint api tokens. Only `api` ever holds it — `web` replays a
+token it was given and never signs one. Both are required in production; in
+development the token secret falls back to `SECRET_KEY`.
+
+Signatures are also salted (`kai-konane-api-token`), so a token minted for some
+other purpose under the same secret cannot be replayed against the api.
+
+**Tokens expire after `API_TOKEN_TTL_S`** (default 12 hours). `web` must treat a
+401 as *log in again*, never as *retry* — an expired token plus a retry loop is
+an infinite loop.
+
+**What this is not.** `token_required` proves *who is calling*, not *what they
+may touch*. Per-object authorisation — that this parent owns this child, that
+this teacher teaches this learner — still lives in `web`'s route guards and
+moves here with #9. Until then a valid token can read another family's data by
+guessing an id.
+
+### Unauthenticated by necessity
+
+Four endpoints stay open, and have to be:
+
+| Endpoint | Why |
+|---|---|
+| `POST /auth/login` | Issues the token; requiring one is circular |
+| `GET /users/availability` | The signup wizard runs before an account exists |
+| `POST /parents`, `POST /teachers` | Registration — same reason |
+| `GET /preschools` | The wizard offers a preschool at step 3 |
+
+These are the only unauthenticated writes in the api. The exposure is the same
+as any public signup form, but it is a deliberate decision rather than an
+oversight, so it is recorded here.
 
 ### Exposed answer keys
 

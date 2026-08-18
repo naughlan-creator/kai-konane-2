@@ -115,6 +115,33 @@ def _secret_key():
     return secrets.token_urlsafe(48)
 
 
+def _api_token_secret():
+    """The key that signs api access tokens.
+
+    Deliberately separate from SECRET_KEY. That key signs `web`'s session
+    cookie; this one signs the bearer tokens `web` presents to the api. They are
+    different trust boundaries, so rotating one must not force rotating the
+    other -- and a leak of the cookie key must not let anyone mint api tokens.
+
+    Only the api ever needs this value. `web` receives a token from the login
+    response and replays it; it never signs one, so it never holds the secret.
+    """
+    key = os.getenv('API_TOKEN_SECRET')
+    if key:
+        return key
+
+    if IS_PRODUCTION:
+        raise RuntimeError(
+            "API_TOKEN_SECRET must be set in production. Generate one with:\n"
+            "  python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+
+    # In development, falling back to SECRET_KEY keeps a single-service setup
+    # working with no extra configuration. The production guard above is what
+    # stops that convenience reaching a deployment.
+    return _secret_key()
+
+
 # Extensions are created unbound and attached inside the factory. Binding them
 # to a module-level app is what makes an application factory impossible.
 db = SQLAlchemy()
@@ -138,6 +165,10 @@ def create_app_object(overrides=None):
     app.config['SQLALCHEMY_DATABASE_URI'] = _database_uri()
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = _secret_key()
+    app.config['API_TOKEN_SECRET'] = _api_token_secret()
+    # How long a token stays valid. web must treat a 401 as "log in again"
+    # rather than retrying, or an expired token becomes an infinite loop.
+    app.config['API_TOKEN_TTL_S'] = int(os.getenv('API_TOKEN_TTL_S', '43200'))
 
     # Cap uploads so a large file cannot exhaust memory or disk.
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_UPLOAD_MB', '10')) * 1024 * 1024

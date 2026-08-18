@@ -1,12 +1,16 @@
 """Authentication and registration.
 
-`web` never touches a password hash. It posts credentials here, gets a user
-payload back, and stores the id in its session cookie. #8 adds the signed token
-to the login response.
+`web` never touches a password hash. It posts credentials here, receives a
+user payload plus a signed bearer token, and stores both in its session cookie.
+Every later call carries that token; see app/api/auth_seam.py.
+
+The endpoints in this module are the only unauthenticated writes in the api, and
+they have to be: you cannot present a token before you have an account.
 """
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 
 from app.api import api_bp
+from app.api.auth_seam import issue_token
 from app.api.serializers import user_out
 from app.services.errors import ValidationError
 from app.services.registration_service import RegistrationService
@@ -27,8 +31,11 @@ def login():
     if user is None:
         return jsonify(error='Invalid username or password'), 401
 
-    # TODO(#8): issue a signed token here and return it alongside the user.
-    return jsonify(user=user_out(user, relations=True))
+    return jsonify(
+        user=user_out(user, relations=True),
+        token=issue_token(user),
+        expires_in=current_app.config['API_TOKEN_TTL_S'],
+    )
 
 
 @api_bp.get('/users/availability')
