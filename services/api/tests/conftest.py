@@ -9,6 +9,8 @@ import sys
 import tempfile
 
 import pytest
+from flask.testing import FlaskClient
+from werkzeug.datastructures import Headers
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("SECRET_KEY", "test-only")
@@ -19,6 +21,7 @@ os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(
     tempfile.mkdtemp(), "kai_test.db").replace("\\", "/")
 
 from app import create_app  # noqa: E402
+from app.api.auth_seam import issue_token  # noqa: E402
 from app.config import db  # noqa: E402
 from app.models import (  # noqa: E402
     Activity,
@@ -29,11 +32,32 @@ from app.models import (  # noqa: E402
     Role,
     Story,
     Teacher,
+    User,
 )
 from app.seeds import seed_all  # noqa: E402
 
 
+class TokenClient(FlaskClient):
+    """A test client that presents a bearer token by default.
+
+    Every /api endpoint except login, registration and the preschool list
+    requires one, so attaching it here keeps the contract tests about the
+    contract. A test that sets its own Authorization header -- or the anon
+    fixture below -- overrides this.
+    """
+
+    token = None
+
+    def open(self, *args, **kwargs):
+        headers = Headers(kwargs.get("headers") or {})
+        if self.token and "Authorization" not in headers:
+            headers["Authorization"] = f"Bearer {self.token}"
+        kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
 flask_app = create_app({"TESTING": True})
+flask_app.test_client_class = TokenClient
 
 
 @pytest.fixture(scope="session")
@@ -92,8 +116,23 @@ def ids(app):
         }
 
 
+@pytest.fixture(scope="session")
+def token(app):
+    """A valid token for the seeded admin."""
+    with flask_app.app_context():
+        return issue_token(User.query.filter_by(username="admin").first())
+
+
 @pytest.fixture()
-def client(app):
+def client(app, token):
+    c = flask_app.test_client()
+    c.token = token
+    return c
+
+
+@pytest.fixture()
+def anon_client(app):
+    """A client that sends no Authorization header, for the 401 cases."""
     return flask_app.test_client()
 
 
