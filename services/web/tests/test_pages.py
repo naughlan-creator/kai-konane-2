@@ -115,6 +115,30 @@ def test_content_images_point_at_the_api(client):
     assert 'static/images/Basic_counting.jpeg' not in body
 
 
+def test_image_urls_are_resolvable_by_a_browser(client, app):
+    """The <img> src must never carry the server-to-server hostname.
+
+    In compose, API_BASE_URL is http://api:5000 -- a name that resolves only
+    inside the Docker network. Building an image URL from it produced a page
+    that rendered perfectly with every picture broken, because a failed <img>
+    is not an error anything reports.
+    """
+    app.config['API_BASE_URL'] = 'http://api:5000'
+    login(client, 'child')
+    body = client.get('/activities').get_data(as_text=True)
+    assert 'http://api:5000' not in body
+    assert 'src="/api/media/' in body
+
+
+def test_the_chart_gets_a_browser_facing_base(client):
+    """stem_graph.js fetches the api directly, so the page has to tell it where
+    the api is rather than assuming same-origin."""
+    login(client, 'parent')
+    body = client.get('/parent/results').get_data(as_text=True)
+    assert 'data-api-base=' in body
+    assert 'http://api:5000' not in body
+
+
 # --------------------------------------------------------------- sessions
 
 def test_login_rejects_a_bad_password(client):

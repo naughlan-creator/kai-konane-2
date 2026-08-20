@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# The dev database. COPY . . would bake real user records and password hashes
+# into a layer -- and layers are append-only, so deleting it later does not
+# remove it.
+instance/
+*.db
+
+# Secrets: docker build does not read .gitignore.
+.env
+
+# Not needed at runtime.
+tests/
+ml_model.py
+StudentsPerformance.csv
+*.md
