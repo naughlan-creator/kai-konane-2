@@ -77,7 +77,16 @@ def create_app_object(overrides=None):
     app.config['SECRET_KEY'] = _secret_key()
 
     # Where the api lives. In compose this becomes http://api:5000
+    # Where *this process* reaches the api. A container hostname is fine here.
     app.config['API_BASE_URL'] = os.getenv('API_BASE_URL', 'http://127.0.0.1:5000')
+
+    # Where the *browser* reaches the api, for <img> sources and fetch() calls.
+    # These are not the same thing: API_BASE_URL is 'http://api:5000' in compose,
+    # and 'api' is a Docker-internal hostname the browser cannot resolve. Empty
+    # means same-origin, which is correct behind the gateway -- nginx routes
+    # /api/ onward. Set it to http://127.0.0.1:5000 when running the two
+    # services directly with no gateway in front.
+    app.config['API_PUBLIC_URL'] = os.getenv('API_PUBLIC_URL', '').rstrip('/')
     # A slow api must not become a hung page. Every call carries this.
     app.config['API_TIMEOUT_S'] = float(os.getenv('API_TIMEOUT_S', '3'))
 

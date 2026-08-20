@@ -5,9 +5,9 @@ children, parents and teachers. Children work through illustrated activities and
 stories; a per-child learning plan decides what they are shown; teachers and
 parents follow progress and message each other about a specific learner.
 
-Built as a Flask monolith, now being decomposed into services. See
-[docs/architecture.md](docs/architecture.md) for the design and the full API
-contract.
+Built as a Flask monolith, now decomposed into four services behind an nginx
+gateway. See [docs/architecture.md](docs/architecture.md) for the design and the
+full API contract.
 
 ![Architecture](docs/img/architecture.png)
 
@@ -29,10 +29,38 @@ completes work. A scikit-learn model predicts a starting level at registration
 from demographic features, falling back to beginner when the model is
 unavailable.
 
+## Run it with Docker
+
+The whole stack -- gateway, web, api and Postgres -- in one command. Copy
+`.env.example` to `.env` first and set `POSTGRES_PASSWORD`, `SECRET_KEY`,
+`API_TOKEN_SECRET` and `WEB_SECRET_KEY`; compose refuses to start without them
+rather than defaulting to something guessable.
+
+```bash
+docker compose up -d --build
+```
+
+Then create the schema and seed it:
+
+```bash
+docker compose exec api flask --app app:create_app db upgrade
+docker compose exec api flask --app app:create_app seed --password demo1234
+```
+
+Open http://localhost:8080. The gateway is the only published port: `web` and
+`api` are reachable only from inside the compose network.
+
+```bash
+docker compose ps          # all four should read healthy
+docker compose logs -f api
+docker compose down        # add -v to drop the database and uploaded images
+```
+
 ## Quickstart
 
-Requires **Python 3.10+** (developed on 3.12). No database server needed — it
-falls back to a local SQLite file.
+Prefer to run it directly, without Docker? Requires **Python 3.10+**
+(developed on 3.12). No database server needed — it falls back to a local SQLite
+file. You will need two terminals, one per service.
 
 ```bash
 git clone https://github.com/naughlan-creator/kai-konane-2.git
@@ -100,11 +128,14 @@ The admin password comes from `ADMIN_PASSWORD` in `.env`; leave it blank and
 ## Tests
 
 ```bash
-cd services/api && python -m pytest
+cd services/api && python -m pytest      # 125 tests
+cd services/web && python -m pytest      # 126 tests
 ```
 
-304 tests. They run against a temporary SQLite database seeded once per session,
-so no setup is required and nothing touches your development data.
+The api's suite runs against a temporary SQLite database seeded once per
+session. web's runs with the api **stubbed out entirely** — no database, no
+network, no second process. A service that needs the rest of the stack in order
+to be tested is not really separate, so that constraint is deliberate.
 
 The API tests assert on the **contract** — the keys and types a client will
 depend on — not just on status codes. A response that returns the right status
@@ -118,16 +149,20 @@ nothing at all, and that timestamps carry an explicit UTC offset.
 
 ```
 docs/architecture.md     design rules, the full API contract, migration notes
-services/api/            the service that owns the domain and the database
+compose.yaml             the whole stack: gateway, web, api, db
+gateway/                 nginx — the single public entrypoint
+services/api/            the domain and the database, JSON only
   app/
-    api/                 JSON endpoints and serializers
-    models/              SQLAlchemy models
-    routes/              HTML routes (moving to services/web)
+    api/                 endpoints, serializers, authz
+    models/              SQLAlchemy models — the only ORM in the repo
     services/            domain logic — the only place that writes
     seeds/               idempotent seed data
     cli.py               seed, check, create-admin, import-content
-  tests/
-gateway/                 nginx config for the service split
+services/web/            the UI — templates, sessions, forms
+  app/
+    api_client.py        the only place web makes an HTTP call
+    identity.py          SessionUser, rebuilt from JSON not the ORM
+    routes/              eleven HTML blueprints
 ```
 
 The rule that shapes the code: **routes never touch the database.** A route
@@ -146,10 +181,13 @@ Mid-decomposition from a monolith into four services:
 | `api` | The domain. Sole owner of the database and migrations |
 | `db` | PostgreSQL 16 |
 
-Today `api` holds the domain, the database and the full JSON API, and still
-serves the HTML routes. `web` does not exist yet as a separate service — the
-presentation layer moves there next, at which point it will talk to `api` over
-HTTP and hold no database access at all.
+`web` imports no ORM and opens no database connection — every read and write is
+an HTTP call to `api`, which owns the schema and all migrations. The acceptance
+test for that boundary is a grep that returns nothing:
+
+```bash
+grep -rn "sqlalchemy\|from app.models" services/web/
+```
 
 [docs/architecture.md](docs/architecture.md) carries the honest build status,
 the ~45-endpoint contract with the embed depth of each response, and the four
@@ -159,15 +197,15 @@ serialization rules that exist because a template breaks silently without them.
 
 Recorded rather than hidden:
 
-- **Authentication between services is a documented no-op.** `token_required`
-  marks every endpoint that will need a token, so switching it on is a one-file
-  change. It must be real before the gateway is exposed.
 - `GET /api/activities/{id}` includes `answers[].is_correct`, because the
   activity page uses it to play the right sound. Scoring is server-side, so a
   child cannot forge a score, but anyone reading the payload can see the
-  answers.
-- `Procfile` still names a module layout that predates the service split.
-  Deployment configuration is rebuilt with the containers.
+  answers. Fixing it properly means checking answers one at a time server-side.
+- **The api image is 799 MB**, of which ~440 MB is scikit-learn and its
+  dependencies — needed only to unpickle a saved model. Exporting it to ONNX
+  would cut the image to roughly 250 MB.
+- No CI yet: tests and linting run locally. That is issue #12.
+- The gateway serves plain HTTP. TLS terminates there when this is deployed.
 
 ## License
 
