@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ story.title }} - Kai Konane</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
+    <script src="{{ url_for('static', filename='js/sounds.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/voice-config.js') }}"></script>
+    <style>
+        body, html {
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header {
+            padding: 10px;
+            flex: 0 0 auto;
+        }
+        .content {
+            background-image: url('/static/background_pictures/stories_page.jpg');
+            background-size: cover;
+            background-position: center;
+            padding: 30px;
+            position: relative;
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        .word {
+            display: inline-block;
+            margin: 0 2px;
+            transition: all 0.3s ease;
+        }
+        
+        .highlight-word {
+            display: inline-block;
+            margin: 0 2px;
+            padding: 0 4px;
+            border-radius: 4px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            color: #000;
+            font-weight: bold;
+            animation: popIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        @keyframes popIn {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.85);
+            z-index: 1;
+        }
+
+        #story-container {
+            position: relative;
+            z-index: 2;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .story-page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        .story-image-container {
+            height: 60%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .story-image {
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        .story-text {
+            font-size: 2.5rem;
+            text-align: center;
+            line-height: 1.5;
+            word-spacing: 0.2em;
+            margin: 20px 0;
+            text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+            flex: 0 0 auto;
+            position: relative;
+            z-index: 2;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .footer {
+            padding: 5px;
+            flex: 0 0 auto;
+        }
+        .title {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        #pause-btn {
+            background-color: #ff4444;
+            position: relative;
+            padding-left: 45px;
+            border: 3px solid #fff;
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+            animation: pulse 2s infinite;
+        }
+        
+        #pause-btn::before {
+            content: '⏸';
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.5rem;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+        }
+
+        form[action*="complete_story"] {
+            display: none;
+        }
+                
+    </style>
+</head>
+<body>
+    {% include '_flashes.html' %}
+
+    <audio id="storyStart" src="{{ url_for('static', filename='sounds/story_start.wav') }}"></audio>
+    <audio id="storyEnd" src="{{ url_for('static', filename='sounds/story_end.wav') }}"></audio>
+    <audio id="switchPage" src="{{ url_for('static', filename='sounds/switch_page.wav') }}"></audio>
+
+    <div class="header header-{{ (current_user.gender or '')|lower }}">
+        <h1 class="title">{{ story.title }}</h1>
+        <button onclick="playAndNavigate('back', '{{ url_for('story.stories') }}')" class="button back-btn">Back to Stories</button>
+    </div>
+    <div class="content">
+        <div id="story-container">
+            {% for page in story.pages %}
+            <div class="story-page" id="page-{{ loop.index0 }}" style="display: {% if loop.index0 == 0 %}flex{% else %}none{% endif %};">
+                <div class="story-image-container">
+                    {# image_filename is optional; concatenating None crashed the page. #}
+                    {% if page.image_filename %}
+                    <img src="{{ url_for('static', filename='images/' + page.image_filename) }}" alt="Page {{ loop.index }} image" class="story-image">
+                    {% endif %}
+                </div>
+                <p class="story-text">{{ page.line_of_page }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="button-container">
+            <button id="start-btn" class="button" onclick="startReading()">Start Reading</button>
+            <button id="pause-btn" class="button" onclick="pauseReading()" style="display: none;">Pause</button>
+            <button id="resume-btn" class="button" onclick="resumeReading()" style="display: none;">Resume</button>
+            <form action="{{ url_for('story.complete_story', story_id=story.id) }}" method="POST" style="display: inline;">
+                <button type="submit" class="button">Mark as Completed</button>
+            </form>
+        </div>
+    </div>
+    <div class="footer footer-{{ (current_user.gender or '')|lower }}"></div>
+
+    <script>
+        let currentPage = 0;
+        const totalPages = {{ story.pages|length }};
+        let isReading = false;
+        let speechSynth = window.speechSynthesis;
+        let selectedVoice = null;
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            await initializeVoice();
+            console.log('Selected voice:', voiceConfig.voice.name);
+        });
+
+        function startReading() {
+            isReading = true;
+            // Hide all buttons except pause
+            document.querySelectorAll('.button-container button').forEach(btn => {
+                if (btn.id !== 'pause-btn') {
+                    btn.style.display = 'none';
+                }
+            });
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+            
+            const storyStartAudio = document.getElementById('storyStart');
+            storyStartAudio.play();
+            storyStartAudio.onended = function() {
+                readCurrentPage();
+            };
+        }
+
+        function pauseReading() {
+            isReading = false;
+            speechSynth.pause();
+            document.getElementById('pause-btn').style.display = 'none';
+            document.getElementById('resume-btn').style.display = 'inline-block';
+        }
+
+        function resumeReading() {
+            isReading = true;
+            speechSynth.resume();
+            document.getElementById('resume-btn').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+        }
+
+        function showPage(index) {
+            document.querySelectorAll('.story-page').forEach(p => p.style.display = 'none');
+            document.getElementById(`page-${index}`).style.display = 'flex';
+            playSwitchPage();
+        }
+
+        function highlightWord(word, container) {
+            const span = document.createElement('span');
+            span.textContent = word;
+            span.className = 'highlight-word';
+            container.appendChild(span);
+            
+            span.animate([
+                { 
+                    transform: 'scale(1.2)',
+                    color: '#FF6B6B',
+                    textShadow: '0 0 8px rgba(255, 107, 107, 0.5)'
+                },
+                { 
+                    transform: 'scale(1)',
+                    color: 'inherit',
+                    textShadow: 'none'
+                }
+            ], {
+                duration: 400,
+                easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
+            });
+        }
+
+        async function readCurrentPage() {
+            if (!isReading) return;
+
+            const currentPageElement = document.getElementById(`page-${currentPage}`);
+            const textContainer = currentPageElement.querySelector('.story-text');
+            const text = textContainer.textContent;
+            
+            // Clear and prepare text container
+            textContainer.innerHTML = '';
+            const words = text.split(' ');
+            words.forEach(word => {
+                const wordSpan = document.createElement('span');
+                wordSpan.textContent = word + ' ';
+                wordSpan.className = 'word';
+                textContainer.appendChild(wordSpan);
+            });
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = voiceConfig.voice;
+            utterance.rate = voiceConfig.rate;
+            utterance.pitch = voiceConfig.pitch;
+            utterance.volume = voiceConfig.volume;
+
+            let wordIndex = 0;
+            const wordElements = textContainer.getElementsByClassName('word');
+            
+            utterance.onboundary = (event) => {
+                if (event.name === 'word') {
+                    Array.from(wordElements).forEach(el => el.classList.remove('highlight-word'));
+                    if (wordElements[wordIndex]) {
+                        wordElements[wordIndex].classList.add('highlight-word');
+                        wordIndex++;
+                    }
+                }
+            };
+
+            utterance.onend = () => {
+                if (currentPage < totalPages - 1) {
+                    currentPage++;
+                    showPage(currentPage);
+                    setTimeout(() => readCurrentPage(), 1000);
+                } else {
+                    isReading = false;
+                    document.getElementById('pause-btn').style.display = 'none';
+                    document.getElementById('start-btn').style.display = 'inline-block';
+                    document.getElementById('start-btn').textContent = 'Read Again';
+                    playStoryEnd();
+                }
+            };
+
+            speechSynthesis.speak(utterance);
+        }
+        
+        
+
+        function playStoryEnd() {
+            const storyEndAudio = document.getElementById('storyEnd');
+            storyEndAudio.play();
+            
+            storyEndAudio.onended = function() {
+                showCompletionMessage();
+                
+                // Make AJAX call to mark story complete
+                fetch(`${window.location.pathname}/complete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(() => {
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("story.stories") }}';
+                    }, 3000);
+                });
+            };
+        }
+
+        function showCompletionMessage() {
+            // Create and show completion overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'completion-overlay';
+            overlay.innerHTML = `
+                <div class="completion-message">
+                    <div class="green-tick">✓</div>
+                    <h2>Story Complete!</h2>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        
+        function playAndNavigate(soundId, url) {
+            playSound(soundId).then(() => {
+                window.location.href = url;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -8,6 +8,7 @@ from flask import jsonify, request
 
 from app.api import api_bp
 from app.api.auth_seam import token_required
+from app.api.authz import require_admin
 from app.api.serializers import preschool_out
 from app.services.errors import NotFound
 from app.services.preschool_service import PreschoolService
@@ -24,6 +25,7 @@ def list_preschools():
 @api_bp.get('/preschools/<int:preschool_id>')
 @token_required
 def get_preschool(preschool_id):
+    require_admin()
     preschool = preschool_service.get_preschool(preschool_id)
     if preschool is None:
         raise NotFound("No such preschool")
@@ -33,6 +35,7 @@ def get_preschool(preschool_id):
 @api_bp.post('/preschools')
 @token_required
 def create_preschool():
+    require_admin()
     payload = request.get_json(silent=True) or {}
     preschool = preschool_service.add_preschool(payload.get('name'))
     return jsonify(preschool=preschool_out(preschool)), 201
@@ -41,6 +44,7 @@ def create_preschool():
 @api_bp.patch('/preschools/<int:preschool_id>')
 @token_required
 def update_preschool(preschool_id):
+    require_admin()
     payload = request.get_json(silent=True) or {}
     preschool = preschool_service.update_preschool(preschool_id, payload.get('name'))
     return jsonify(preschool=preschool_out(preschool))
@@ -51,5 +55,6 @@ def update_preschool(preschool_id):
 def delete_preschool(preschool_id):
     """Refuses while teachers or learners are still attached -- the service
     raises Conflict, which becomes a 409."""
+    require_admin()
     preschool_service.delete_preschool(preschool_id)
     return '', 204

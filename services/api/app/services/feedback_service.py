@@ -26,6 +26,14 @@ class FeedbackService:
                 .order_by(Feedback.sent_at.desc())
                 .all())
 
+    def get_feedbacks_by_recipient_id(self, recipient_id):
+        """Everything addressed to this user, read or not, newest first."""
+        return (Feedback.query
+                .options(joinedload(Feedback.sender))
+                .filter_by(recipient_id=recipient_id)
+                .order_by(Feedback.sent_at.desc())
+                .all())
+
     def get_conversation(self, user_id, limit=100):
         """Everything sent and received, newest first, in one query."""
         return (Feedback.query

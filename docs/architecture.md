@@ -22,7 +22,8 @@ This table is the honest picture of what exists today.
 | Contract tests over every endpoint (`test_api_content.py`, `test_api_domain.py`) | **built** (#7) |
 | Rewards over JSON | deferred — write-only for now, see below |
 | Bearer-token auth between `web` and `api` | **built** (#8) |
-| `services/web` calling `api` over HTTP | planned (#9) |
+| `services/web` calling `api` over HTTP | **built** (#9) |
+| Per-object authorisation in the api (`app/api/authz.py`) | **built** (#9) |
 | `gateway`, Dockerfiles, compose | planned (#10) |
 
 Until #9 lands, `api` also serves the HTML routes and owns `templates/` and
@@ -196,10 +197,47 @@ other purpose under the same secret cannot be replayed against the api.
 an infinite loop.
 
 **What this is not.** `token_required` proves *who is calling*, not *what they
-may touch*. Per-object authorisation — that this parent owns this child, that
-this teacher teaches this learner — still lives in `web`'s route guards and
-moves here with #9. Until then a valid token can read another family's data by
-guessing an id.
+may touch*. That second question is answered by `app/api/authz.py` — see below.
+
+### Authorisation
+
+`token_required` establishes identity; `app/api/authz.py` decides what that
+identity may touch. Both are needed, and having only the first is what made the
+following possible before #9:
+
+```
+PARENT token (uid 3) → PATCH /api/users/1 {"password": "..."} → 200
+                     → log in as admin with that password     → succeeds
+```
+
+Any signed-in user could rewrite any account, read any family's progress, and
+rewrite the whole content library. Every endpoint was authenticated; none was
+authorised.
+
+Two rules the module is built on:
+
+**Deny by default.** An unrecognised role gets nothing. The check this replaced
+compared `role.name` to a lowercase string, never matched, and so allowed
+everyone — a check that fails open is worse than no check at all, because it
+reads like protection.
+
+**Identity comes from the token, never the request.** `?parent_id=3` is a claim
+by the caller; `g.current_user_id` is a claim the api signed. Only the second is
+evidence. Scoping filters against the query string rather than the token is what
+turns a listing endpoint into a data leak.
+
+| Rule | Applies to |
+|---|---|
+| Admin only | `GET /users`, `DELETE /users/{id}`, all content authoring, media upload, preschool writes |
+| Self or admin | `PATCH /users/{id}`, `PATCH /parents/{id}`, `PATCH /teachers/{id}` |
+| Own learner | anything naming a `child_id` — progress, results, plans, stem-levels, submissions |
+| Own mail | feedback listing, reading, and sending as yourself |
+| Correspondent | `GET /users/{id}` for someone you share a learner with |
+
+`tests/test_api_authz.py` covers these from the attacker's side — every test
+describes something that worked before the module existed — plus two that assert
+the checks are not blanket, because the failure mode of a security patch is
+locking out the people it was meant to protect.
 
 ### Unauthenticated by necessity
 

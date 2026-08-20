@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Kai Konane: bright moonlight over the sea -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16436B"/>
+      <stop offset="1" stop-color="#0E8A8F"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#sky)"/>
+  <!-- moon -->
+  <circle cx="38" cy="22" r="11" fill="#FFE9A8"/>
+  <circle cx="42.5" cy="19" r="9.5" fill="url(#sky)" opacity="0.92"/>
+  <circle cx="38" cy="22" r="11" fill="none" stroke="#FFE9A8" stroke-width="0" />
+  <!-- stars -->
+  <circle cx="20" cy="16" r="1.6" fill="#FFE9A8"/>
+  <circle cx="25" cy="26" r="1.1" fill="#FFE9A8" opacity="0.8"/>
+  <circle cx="47" cy="34" r="1.3" fill="#FFE9A8" opacity="0.9"/>
+  <!-- waves -->
+  <path d="M6 42 Q13 36 20 42 T34 42 T48 42 T62 42 V64 H2 Z" fill="#3FB9C6" opacity="0.95"/>
+  <path d="M2 49 Q9 44 16 49 T30 49 T44 49 T58 49 T64 49 V64 H0 Z" fill="#7FD7DE" opacity="0.95"/>
+  <path d="M0 56 Q7 52 14 56 T28 56 T42 56 T56 56 T64 56 V64 H0 Z" fill="#C8EFF2"/>
+  <!-- moon glint on the water -->
+  <ellipse cx="38" cy="45" rx="4" ry="1.2" fill="#FFE9A8" opacity="0.75"/>
+  <ellipse cx="37" cy="52" rx="2.6" ry="0.9" fill="#FFE9A8" opacity="0.55"/>
+</svg>
