@@ -3,13 +3,16 @@ from flask import jsonify, request
 
 from app.api import api_bp
 from app.api.auth_seam import token_required
+from app.api.authz import require_child_access
 from app.api.serializers import activity_out, learning_plan_out, story_out
 from app.models.activity import Activity
 from app.models.child import Level
+from app.services.child_service import ChildService
 from app.services.errors import NotFound, ValidationError
 from app.services.learning_plan_service import LearningPlanService
 
 learning_plan_service = LearningPlanService()
+child_service = ChildService()
 
 STRANDS = ('science_level', 'technology_level', 'engineering_level',
            'math_level', 'story_level')
@@ -18,6 +21,7 @@ STRANDS = ('science_level', 'technology_level', 'engineering_level',
 @api_bp.get('/learning-plans/child/<int:child_id>')
 @token_required
 def get_plan(child_id):
+    require_child_access(child_id, child_service)
     plan = learning_plan_service.get_learning_plan_by_child(child_id)
     if plan is None:
         raise NotFound("That child has no learning plan yet")
@@ -33,6 +37,7 @@ def put_plan(child_id):
 
     Body: {"science_level": "BEGINNER", ...} for all five strands.
     """
+    require_child_access(child_id, child_service)
     payload = request.get_json(silent=True) or {}
 
     levels = {}
@@ -62,6 +67,7 @@ def recommendations(child_id):
     array: the templates render them differently and a client should not have to
     branch on a `type` discriminator to lay the page out.
     """
+    require_child_access(child_id, child_service)
     plan = learning_plan_service.get_learning_plan_by_child(child_id)
     if plan is None:
         raise NotFound("That child has no learning plan yet")

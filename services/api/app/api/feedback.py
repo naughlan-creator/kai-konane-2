@@ -12,11 +12,20 @@ from flask import jsonify, request
 
 from app.api import api_bp
 from app.api.auth_seam import token_required
+from app.api.authz import current_user_id, is_admin, require_owner
 from app.api.serializers import feedback_out
-from app.services.errors import NotFound, ValidationError
+from app.services.errors import Forbidden, NotFound, ValidationError
 from app.services.feedback_service import FeedbackService
 
 feedback_service = FeedbackService()
+
+
+def _require_correspondent(message):
+    """Only the two people on a message may read it."""
+    if is_admin():
+        return
+    if current_user_id() not in (message.sender_id, message.recipient_id):
+        raise Forbidden("That message is not yours")
 
 
 @api_bp.post('/feedback')
@@ -33,6 +42,10 @@ def send_feedback():
     content = (payload.get('content') or '').strip()
     if not subject or not content:
         raise ValidationError("A subject and a message are both required")
+
+    # You may only send as yourself. Without this, any token could forge a
+    # message from a head teacher to a parent.
+    require_owner(payload['sender_id'], "You cannot send as another user")
 
     message = feedback_service.add_feedback(
         payload['sender_id'], payload['recipient_id'],
@@ -54,10 +67,12 @@ def list_feedback():
     if participant_id:
         if not participant_id.isdigit():
             raise ValidationError("participant_id must be a number")
+        require_owner(int(participant_id), "That is not your mail")
         messages = feedback_service.get_conversation(int(participant_id))
     elif recipient_id:
         if not recipient_id.isdigit():
             raise ValidationError("recipient_id must be a number")
+        require_owner(int(recipient_id), "That is not your mail")
         if unread:
             messages = feedback_service.get_unread_feedbacks_by_recipient_id(
                 int(recipient_id))
@@ -76,6 +91,7 @@ def get_feedback(feedback_id):
     message = feedback_service.get_feedback(feedback_id)
     if message is None:
         raise NotFound("No such message")
+    _require_correspondent(message)
     return jsonify(feedback=feedback_out(message))
 
 
@@ -87,6 +103,11 @@ def mark_read(feedback_id):
     A GET that mutates would mean any preview, crawler or double-render marked
     mail as read.
     """
+    existing = feedback_service.get_feedback(feedback_id)
+    if existing is None:
+        raise NotFound("No such message")
+    _require_correspondent(existing)
+
     message = feedback_service.mark_feedback_as_read(feedback_id)
     if message is None:
         raise NotFound("No such message")

@@ -29,3 +29,9 @@ class NotFound(ServiceError):
 class Conflict(ServiceError):
     """The request collides with existing data (duplicate, in-use, ...)."""
     status = 409
+
+
+class Forbidden(ServiceError):
+    """Authenticated, but not allowed to touch this object."""
+
+    status = 403
