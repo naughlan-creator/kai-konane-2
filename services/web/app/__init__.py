@@ -51,8 +51,4 @@ def create_app(overrides=None):
     from app.filters import register_filters
     register_filters(app)
 
-    # Last, so it only fills genuine gaps. Logs what is still missing on boot.
-    from app.stubs import register_stubs
-    register_stubs(app)
-
     return app

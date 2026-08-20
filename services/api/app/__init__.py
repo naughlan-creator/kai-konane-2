@@ -1,52 +1,27 @@
-"""Application factory for the api service."""
-from flask import render_template
+"""Application factory for the api service.
 
+Since #9 this service serves JSON and nothing else. It has no templates, no
+sessions and no HTML routes -- those moved to services/web, which reaches this
+one over HTTP. What stays here is the domain: the models, the services, the
+migrations and the database connection, which no other service opens.
+"""
 from app.config import create_app_object
 
 
 def create_app(overrides=None):
     app = create_app_object(overrides)
 
-    # Imported inside the factory, not at module scope: routes import models,
+    # Imported inside the factory, not at module scope: api imports models,
     # models import config, and config imports back into the package -- a
     # top-level import chain closes that loop and raises on startup.
     from app.api import api_bp, register_error_handlers
     from app.cli import register_cli
-    from app.routes import (
-        activity_bp,
-        admin_bp,
-        feedback_bp,
-        learning_content_bp,
-        learning_plan_bp,
-        preschool_bp,
-        profile_bp,
-        progress_bp,
-        story_bp,
-        user_bp,
-    )
     from app.routes.health import health_bp
 
-    for blueprint in (
-        user_bp,
-        admin_bp,
-        preschool_bp,
-        feedback_bp,
-        activity_bp,
-        story_bp,
-        learning_content_bp,
-        profile_bp,
-        learning_plan_bp,
-        progress_bp,
-        health_bp,
-        # The JSON API, mounted at /api. The HTML blueprints above leave for
-        # services/web in #9; this one stays.
-        api_bp,
-    ):
-        app.register_blueprint(blueprint)
-
-    @app.route('/')
-    def index():
-        return render_template('index.html')
+    app.register_blueprint(api_bp)
+    # Not part of the JSON contract: these are hit by the orchestrator, so they
+    # sit at the root rather than under /api.
+    app.register_blueprint(health_bp)
 
     register_error_handlers(app)
     register_cli(app)

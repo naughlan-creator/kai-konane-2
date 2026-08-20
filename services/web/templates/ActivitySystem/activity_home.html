@@ -121,7 +121,7 @@
                     <article class="activity-item" data-stem-code="{{ activity.stem_code.name if activity.stem_code else '' }}">
                         <div class="activity-image">
                             {% if activity.cover_image %}
-                                <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" 
+                                <img src="{{ content_image(activity.cover_image) }}" 
                                      alt="{{ activity.title }}" class="activity-cover">
                             {% else %}
                                 <div class="activity-cover placeholder">No Cover Image</div>

@@ -1,18 +1,9 @@
-"""Application wiring: blueprints, config and health endpoints.
-
-Separate from test_pages.py, which asks whether pages render for the right
-role. This file asks whether the app is assembled correctly at all.
-"""
+"""Application wiring: blueprints, config and health endpoints."""
 from conftest import flask_app
 
 
 def test_every_blueprint_is_registered():
-    """A wildcard-to-explicit import rewrite silently drops names.
-
-    routes/__init__.py used to be consumed with `from routes import *`, so a
-    missing blueprint was invisible. Now that app.py imports each one by name,
-    this catches an omission at test time instead of as a 404 in the browser.
-    """
+    """A blueprint that is defined but never registered is a silent 404."""
     # `import app.routes` would bind the name `app`, not `routes`.
     from app import routes
 
@@ -20,6 +11,18 @@ def test_every_blueprint_is_registered():
                for name in dir(routes) if name.endswith('_bp')}
     registered = set(flask_app.blueprints)
     assert defined <= registered, f"not registered: {sorted(defined - registered)}"
+
+
+def test_the_api_serves_no_html():
+    """Since #9 this service is JSON only.
+
+    A template route reappearing here means presentation logic has leaked back
+    across the boundary -- which is exactly how the monolith re-forms.
+    """
+    paths = [str(rule) for rule in flask_app.url_map.iter_rules()]
+    non_api = [p for p in paths
+               if not p.startswith('/api/') and not p.startswith('/static/')]
+    assert sorted(non_api) == ['/healthz', '/readyz'], non_api
 
 
 def test_healthz_reports_ok(client):

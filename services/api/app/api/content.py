@@ -5,7 +5,7 @@ filtered by that child's per-strand learning plan levels and each item carries
 the child's progress -- which is what activity_home.html and stories.html need
 in a single call rather than one request per card.
 """
-from flask import current_app, jsonify, request
+from flask import current_app, jsonify, request, send_from_directory
 
 from app.api import api_bp
 from app.api.auth_seam import token_required
@@ -19,7 +19,7 @@ from app.services.activity_service import ActivityService
 from app.services.child_service import ChildService
 from app.services.errors import NotFound, ValidationError
 from app.services.learning_plan_service import LearningPlanService
-from app.services.media import library_images, save_upload
+from app.services.media import UPLOAD_FOLDER, library_images, save_upload
 from app.services.reward_service import RewardService
 from app.services.story_service import StoryService
 
@@ -429,6 +429,21 @@ def _pages_from_payload(pages):
 
 
 # ------------------------------------------------------------------- media
+
+@api_bp.get('/media/<path:filename>')
+def serve_media(filename):
+    """Serve a content image.
+
+    Deliberately unauthenticated. A browser fetching <img src="..."> sends no
+    Authorization header, so requiring a token here would break every cover
+    image on the site. These are illustrations, not records.
+
+    send_from_directory rejects traversal itself, which is why the filename is
+    not sanitised again here -- a second, hand-rolled check would be the thing
+    most likely to be wrong.
+    """
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
 
 @api_bp.get('/media')
 @token_required

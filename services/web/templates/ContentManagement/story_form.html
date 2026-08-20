@@ -68,7 +68,7 @@
                                     {% if page.image_filename %}
                                         <div class="image-current">
                                             <span>Currently:</span>
-                                            <img src="{{ url_for('static', filename='images/' + page.image_filename) }}"
+                                            <img src="{{ content_image(page.image_filename) }}"
                                                  alt="Page {{ n }}">
                                             <code>{{ page.image_filename }}</code>
                                         </div>

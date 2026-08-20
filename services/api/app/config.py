@@ -9,7 +9,6 @@ import sqlite3
 import warnings
 
 from flask import Flask
-from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event
@@ -146,7 +145,6 @@ def _api_token_secret():
 # to a module-level app is what makes an application factory impossible.
 db = SQLAlchemy()
 migrate = Migrate()
-login_manager = LoginManager()
 
 
 def create_app_object(overrides=None):
@@ -158,7 +156,9 @@ def create_app_object(overrides=None):
     """
     app = Flask(
         __name__,
-        template_folder=os.path.join(basedir, 'templates'),
+        # No templates: this service returns JSON. `static` stays because the
+        # api owns the content images authors upload -- see app/services/media.py
+        # and GET /api/media/<filename>.
         static_folder=os.path.join(basedir, 'static'),
     )
 
@@ -191,8 +191,6 @@ def create_app_object(overrides=None):
 
     db.init_app(app)
     migrate.init_app(app, db)
-    login_manager.init_app(app)
-    login_manager.login_view = 'user.login'
 
     return app
 

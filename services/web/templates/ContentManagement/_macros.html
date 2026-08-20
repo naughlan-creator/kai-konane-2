@@ -25,7 +25,7 @@
     {% if current %}
       <div class="image-current">
         <span>Currently:</span>
-        <img src="{{ url_for('static', filename='images/' + current) }}" alt="{{ current }}">
+        <img src="{{ content_image(current) }}" alt="{{ current }}">
         <code>{{ current }}</code>
       </div>
     {% endif %}
@@ -39,7 +39,7 @@
 
     <img class="image-preview" data-image-preview hidden
          data-base="{{ url_for('static', filename='images/') }}"
-         src="{% if current %}{{ url_for('static', filename='images/' + current) }}{% endif %}"
+         src="{% if current %}{{ content_image(current) }}{% endif %}"
          alt="Preview">
 
     <span class="image-or">or upload a new one</span>

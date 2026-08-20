@@ -16,7 +16,7 @@
     </div>
     <div class="content">
         {% if activity.cover_image %}
-        <img src="{{ url_for('static', filename='images/' + activity.cover_image) }}" alt="{{ activity.title }} cover" class="activity-cover">
+        <img src="{{ content_image(activity.cover_image) }}" alt="{{ activity.title }} cover" class="activity-cover">
         {% endif %}
         <div id="question-container">
             {% for question in activity.questions %}

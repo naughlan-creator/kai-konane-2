@@ -78,7 +78,7 @@
             {% for story in stories %}
             <div class="story-item">
                 {% if story.cover_page %}
-                <img src="{{ url_for('static', filename='images/' + story.cover_page) }}" alt="{{ story.title }}" class="story-cover">
+                <img src="{{ content_image(story.cover_page) }}" alt="{{ story.title }}" class="story-cover">
                 {% else %}
                 <div class="story-cover placeholder">No Cover Image</div>
                 {% endif %}
