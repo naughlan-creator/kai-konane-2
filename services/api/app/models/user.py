@@ -1,6 +1,5 @@
 from enum import Enum as PyEnum
 
-from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.config import db
@@ -25,7 +24,14 @@ class Role(PyEnum):
             return default
 
 
-class User(db.Model, UserMixin):
+class User(db.Model):
+    """A user account.
+
+    No longer a Flask-Login UserMixin: sessions belong to `web`, which builds
+    its own SessionUser from this record's JSON. The api authenticates with a
+    bearer token and never holds a session.
+    """
+
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)

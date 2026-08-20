@@ -19,7 +19,8 @@ class Feedback(db.Model):
                          index=True)
 
     sender = db.relationship('User', foreign_keys=[sender_id], back_populates='sent_feedbacks')
-    recipient = db.relationship('User', foreign_keys=[recipient_id], back_populates='received_feedbacks')
+    recipient = db.relationship('User', foreign_keys=[recipient_id],
+                                back_populates='received_feedbacks')
     child = db.relationship('Child', foreign_keys=[child_id], back_populates='feedbacks')
 
     def __init__(self, subject, message, sender_id, recipient_id, child_id=None, sent_at=None):

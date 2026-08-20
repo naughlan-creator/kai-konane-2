@@ -22,14 +22,16 @@ This table is the honest picture of what exists today.
 | Contract tests over every endpoint (`test_api_content.py`, `test_api_domain.py`) | **built** (#7) |
 | Rewards over JSON | deferred — write-only for now, see below |
 | Bearer-token auth between `web` and `api` | **built** (#8) |
-| `services/web` calling `api` over HTTP | planned (#9) |
+| `services/web` calling `api` over HTTP | **built** (#9) |
+| Per-object authorisation in the api (`app/api/authz.py`) | **built** (#9) |
 | `gateway`, Dockerfiles, compose | planned (#10) |
 
-Until #9 lands, `api` also serves the HTML routes and owns `templates/` and
-`static/`. That is deliberate: `services/web` cannot import `services/api`'s
-models across the directory boundary, so splitting them before the HTTP layer
-exists would leave the app broken for the whole middle of the branch. The
-presentation assets move to `services/web` as part of #9.
+The split is complete. `api` serves JSON and nothing else -- no templates, no
+sessions, no Flask-Login. `web` renders HTML and holds no ORM. A test in each
+service asserts the boundary rather than trusting it: `test_the_api_serves_no_html`
+checks that the only non-`/api` routes are `/healthz` and `/readyz`, and web's
+suite runs with the api stubbed out entirely, which it could not do if it
+reached into the database.
 
 ## Repository layout
 
@@ -44,29 +46,54 @@ kai-konane/
     │   │   ├── config.py       settings + unbound extensions
     │   │   ├── models/         SQLAlchemy models — the only ORM in the repo
     │   │   ├── services/       domain logic
-    │   │   ├── routes/         blueprints (HTML today, JSON from #7)
+    │   │   ├── api/            the JSON endpoints, serializers and authz
+    │   │   ├── routes/         health only -- the HTML blueprints left in #9
     │   │   ├── seeds/          idempotent seed data
     │   │   ├── cli.py          flask seed / check / init-db
     │   │   ├── level_predictor.py
     │   │   └── utils.py
-    │   ├── templates/          moves to services/web in #9
-    │   ├── static/             moves to services/web in #9
+    │   ├── static/images/      content images authors upload (api owns these)
     │   ├── migrations/         alembic — owned by api alone
     │   ├── tests/
     │   ├── ml_model.py         trains level_prediction_model.joblib
     │   └── requirements.txt
-    └── web/                    UI service                        (#9)
+    └── web/
+        ├── app/
+        │   ├── api_client.py   the only place web makes an HTTP call
+        │   ├── identity.py     SessionUser + the user_loader
+        │   ├── roles.py        web's own Role enum
+        │   ├── filters.py      |datetime and content_image()
+        │   └── routes/         the eleven HTML blueprints
+        ├── templates/
+        ├── static/             web's own css, js, logo -- not content images
+        ├── tests/              runs with the api stubbed out
+        └── requirements.txt    four packages, no ORM
 ```
 
 Two placement rules worth stating, because both caused failures during #6:
 
-- **`templates/` and `static/` sit beside the package, not inside it.** They
-  belong to `web` and are only lodging with `api` until #9, so the factory
-  passes both paths to `Flask()` explicitly. Without that, Flask looks under
-  `app/` and every `render_template` fails.
+- **`static/` sits beside the package, not inside it**, so the factory passes
+  the path to `Flask()` explicitly. Without that, Flask looks under `app/`.
 - **`config.basedir` is the *service* directory** (`services/api`), not the
   package directory. `services/media.py` derives the upload path from it and
   `level_predictor.py` finds the `.joblib` through it.
+
+### Content images belong to the api
+
+Authors upload cover pictures and story pages through the api, which stores them
+beside itself and serves them at `GET /api/media/<filename>`. `web`'s templates
+call `content_image(filename)` rather than `url_for('static', ...)`.
+
+That distinction matters more than it looks. Both services shipped a copy of the
+same 69 images during the transition, so pointing at web's `/static` appeared to
+work — and would have kept appearing to work until the first image uploaded
+after the split, which would exist only beside the api and 404 in web. A broken
+image is not an error any test catches. web's `static/` now holds its own assets
+only: css, js and the logo.
+
+The media endpoint is deliberately unauthenticated: a browser fetching
+`<img src>` sends no Authorization header, so requiring a token there would blank
+every cover on the site.
 
 ## Design rules
 
@@ -196,10 +223,47 @@ other purpose under the same secret cannot be replayed against the api.
 an infinite loop.
 
 **What this is not.** `token_required` proves *who is calling*, not *what they
-may touch*. Per-object authorisation — that this parent owns this child, that
-this teacher teaches this learner — still lives in `web`'s route guards and
-moves here with #9. Until then a valid token can read another family's data by
-guessing an id.
+may touch*. That second question is answered by `app/api/authz.py` — see below.
+
+### Authorisation
+
+`token_required` establishes identity; `app/api/authz.py` decides what that
+identity may touch. Both are needed, and having only the first is what made the
+following possible before #9:
+
+```
+PARENT token (uid 3) → PATCH /api/users/1 {"password": "..."} → 200
+                     → log in as admin with that password     → succeeds
+```
+
+Any signed-in user could rewrite any account, read any family's progress, and
+rewrite the whole content library. Every endpoint was authenticated; none was
+authorised.
+
+Two rules the module is built on:
+
+**Deny by default.** An unrecognised role gets nothing. The check this replaced
+compared `role.name` to a lowercase string, never matched, and so allowed
+everyone — a check that fails open is worse than no check at all, because it
+reads like protection.
+
+**Identity comes from the token, never the request.** `?parent_id=3` is a claim
+by the caller; `g.current_user_id` is a claim the api signed. Only the second is
+evidence. Scoping filters against the query string rather than the token is what
+turns a listing endpoint into a data leak.
+
+| Rule | Applies to |
+|---|---|
+| Admin only | `GET /users`, `DELETE /users/{id}`, all content authoring, media upload, preschool writes |
+| Self or admin | `PATCH /users/{id}`, `PATCH /parents/{id}`, `PATCH /teachers/{id}` |
+| Own learner | anything naming a `child_id` — progress, results, plans, stem-levels, submissions |
+| Own mail | feedback listing, reading, and sending as yourself |
+| Correspondent | `GET /users/{id}` for someone you share a learner with |
+
+`tests/test_api_authz.py` covers these from the attacker's side — every test
+describes something that worked before the module existed — plus two that assert
+the checks are not blanket, because the failure mode of a security patch is
+locking out the people it was meant to protect.
 
 ### Unauthenticated by necessity
 
