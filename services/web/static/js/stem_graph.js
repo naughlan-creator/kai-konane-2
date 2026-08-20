@@ -60,7 +60,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (graphContainer.style.display === 'none') {
                 graphContainer.style.display = 'block';
                 // Fetch STEM data for the child
-                fetch(`/api/children/${childId}/stem-levels`)
+                // Same origin behind the gateway; an absolute base when the
+                // services run directly with nothing in front of them.
+                const apiBase = document.body.dataset.apiBase || '';
+                fetch(`${apiBase}/api/children/${childId}/stem-levels`)
                     .then(response => response.json())
                     .then(data => {
                         showStemGraph(childId, data);

@@ -24,7 +24,7 @@ This table is the honest picture of what exists today.
 | Bearer-token auth between `web` and `api` | **built** (#8) |
 | `services/web` calling `api` over HTTP | **built** (#9) |
 | Per-object authorisation in the api (`app/api/authz.py`) | **built** (#9) |
-| `gateway`, Dockerfiles, compose | planned (#10) |
+| `gateway`, Dockerfiles, compose | **built** (#10) |
 
 The split is complete. `api` serves JSON and nothing else -- no templates, no
 sessions, no Flask-Login. `web` renders HTML and holds no ORM. A test in each
@@ -445,6 +445,77 @@ path, not thirty:
 
 The 401 message is deliberately identical for an unknown username and a wrong
 password. Distinguishing them turns the login form into a username oracle.
+
+## Running it
+
+```bash
+docker compose up -d --build
+docker compose exec api flask --app app:create_app db upgrade
+docker compose exec api flask --app app:create_app seed --password <password>
+```
+
+The gateway is the only service that publishes a port (8080). `web` and `api`
+are reachable only from inside the compose network, which is what makes the
+gateway an entrypoint rather than a convenience.
+
+### Base images differ per service, on purpose
+
+| Service | Base | Size | Why |
+|---|---|---|---|
+| `api` | `python:3.12-slim` | 799 MB / 193 MB transferred | scipy and scikit-learn ship manylinux wheels. On musl, pip falls back to compiling scipy from source -- twenty minutes, and a *larger* image |
+| `web` | `python:3.12-alpine` | 116 MB / 33 MB transferred | Four pure-python dependencies. Nothing to compile, so musl costs nothing and the base is ~120 MB smaller |
+| `gateway` | `nginx:1.27-alpine` | ~50 MB | Config file over a stock image |
+
+The rule is not "alpine is smaller". It is **alpine wins when you have no
+compiled dependencies and loses when you do** -- two services in one repo,
+opposite answers.
+
+The api's 440 MB of scientific stack is not removable: `level_predictor.py`
+unpickles a `.joblib` model, and deserialising a scikit-learn Pipeline requires
+scikit-learn, which pulls in numpy and scipy. Only `ml_model.py` imports sklearn
+by name, so it looks droppable. Exporting the model to ONNX and using
+`onnxruntime` (~15 MB) would cut the api to roughly 250 MB -- recorded as a known
+tradeoff, not done.
+
+`.dockerignore` lives in each service directory, not the repo root. Docker reads
+`<build-context>/.dockerignore`, and the contexts are `services/api` and
+`services/web`, so a root file is never consulted. A root one existed briefly and
+did nothing -- during which the api image shipped the development database,
+including real password hashes. **A file that looks like it is protecting you but
+is not is worse than no file.** The per-service files cut the context from 587 MB
+to 29 MB.
+
+### Healthchecks say less than they appear to
+
+Every service has one, and dependents wait on `condition: service_healthy` rather
+than plain `depends_on` -- which waits for a container to *start*, not to be
+usable. Postgres accepts a socket seconds before it will answer a query.
+
+The endpoints differ on purpose:
+
+| Service | Checks | Why |
+|---|---|---|
+| `db` | `pg_isready -U kai` | Without `-U` the check runs as root, which is not a role in this database, and fails forever |
+| `api` | `/readyz` | The api is only useful if the database answers, so readiness includes it |
+| `web` | `/healthz` | web has no database and **must stay up when the api is down** -- it renders the error page. Checking the api here would turn one failure into two |
+| `gateway` | `wget http://127.0.0.1/healthz` | The literal address, not `localhost`: `listen 80` binds IPv4 only, and `localhost` resolves to `::1` first inside the container |
+
+`start_period` is not a longer interval -- failures inside it do not count toward
+`retries`, which is what lets Postgres initialise a fresh data directory without
+exhausting them.
+
+**Healthy does not mean working.** During this build three services reported
+healthy while `/` returned 404 and `/api/preschools` returned 500: the gateway
+was proxying to the wrong upstream and the database had no tables. `/readyz`
+checks that Postgres *answers*, not that any table exists. The acceptance test is
+therefore a request through the gateway to each service, not `docker compose ps`.
+
+### Uploads need a volume
+
+Content images land in `/app/static/images` inside the api. Containers are
+disposable, so without the `media` volume every rebuild silently deletes
+everything an author uploaded -- and the pages still render, with broken
+pictures.
 
 ## Mermaid diagram
 ```mermaid
