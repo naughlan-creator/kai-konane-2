@@ -35,14 +35,28 @@ def content_image(filename):
     silently, because a broken image is not an error anyone's tests catch.
 
     web's own assets -- css, js, the logo -- stay on url_for('static').
+
+    Built from API_PUBLIC_URL, not API_BASE_URL. The browser fetches this, and
+    the browser cannot resolve 'api' -- that name only exists inside the compose
+    network. Using the server-to-server base here produced an <img> pointing at
+    http://api:5000 and a broken picture on every story page.
     """
     if not filename:
         return ''
-    base = current_app.config['API_BASE_URL'].rstrip('/')
-    return f"{base}/api/media/{filename}"
+    return f"{api_public_url()}/api/media/{filename}"
+
+
+def api_public_url():
+    """The base the browser should use to reach the api.
+
+    Empty behind the gateway, which serves both services from one origin.
+    """
+    return current_app.config['API_PUBLIC_URL']
 
 
 def register_filters(app):
     app.jinja_env.filters['datetime'] = datetimeformat
     # A global, not a filter: templates call it like url_for().
     app.jinja_env.globals['content_image'] = content_image
+    # Templates hand this to the scripts that fetch from the api directly.
+    app.jinja_env.globals['api_public_url'] = api_public_url
