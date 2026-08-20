@@ -178,7 +178,7 @@
                 <div class="story-image-container">
                     {# image_filename is optional; concatenating None crashed the page. #}
                     {% if page.image_filename %}
-                    <img src="{{ url_for('static', filename='images/' + page.image_filename) }}" alt="Page {{ loop.index }} image" class="story-image">
+                    <img src="{{ content_image(page.image_filename) }}" alt="Page {{ loop.index }} image" class="story-image">
                     {% endif %}
                 </div>
                 <p class="story-text">{{ page.line_of_page }}</p>

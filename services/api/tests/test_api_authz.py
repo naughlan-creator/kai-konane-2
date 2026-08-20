@@ -5,10 +5,9 @@ so these tests are the only ones that would catch a missing check. Each one
 describes an attack that worked before app/api/authz.py existed.
 """
 import pytest
-from conftest import flask_app
-
 from app.api.auth_seam import issue_token
 from app.models import User
+from conftest import flask_app
 
 
 def token_for(username):

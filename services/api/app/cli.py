@@ -91,8 +91,9 @@ def seed(demo, password):
             _echo_credentials(role, username,
                               shared if any(u == username for _, u in info['created']) else None)
         for child in info['children']:
+            was_created = any(u == child.username for _, u in info['created'])
             _echo_credentials('child', child.username,
-                              shared if any(u == child.username for _, u in info['created']) else None)
+                              shared if was_created else None)
         if info['created']:
             click.echo("")
             click.echo("  Store these now -- they are not shown again.")

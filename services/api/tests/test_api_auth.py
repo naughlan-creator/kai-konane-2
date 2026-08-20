@@ -4,10 +4,9 @@ The rest of the api suite runs with a token attached by the test client, so
 these are the tests that check the wall itself rather than what is behind it.
 """
 import pytest
+from app.api.auth_seam import TOKEN_SALT, read_token
 from conftest import flask_app
 from itsdangerous import URLSafeTimedSerializer
-
-from app.api.auth_seam import TOKEN_SALT, read_token
 
 # Every one of these needs a token. The list is the acceptance criterion for #8
 # plus one endpoint from each resource module, so a module that forgets the
