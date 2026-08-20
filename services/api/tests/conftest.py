@@ -17,8 +17,13 @@ os.environ.setdefault("SECRET_KEY", "test-only")
 # seed_admin reads ADMIN_PASSWORD; without it the admin gets a random password
 # and every admin-role test fails at the login step.
 os.environ["ADMIN_PASSWORD"] = "pw"
-os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(
-    tempfile.mkdtemp(), "kai_test.db").replace("\\", "/")
+# CI points TEST_DATABASE_URL at a Postgres service container so the suite runs
+# against the engine production uses. Without it, a throwaway SQLite file keeps a
+# fresh clone runnable with no database server -- but SQLite is forgiving about
+# things Postgres is not (type coercion, enum handling, transactional DDL), so a
+# green SQLite run is not proof.
+os.environ["DATABASE_URL"] = os.getenv("TEST_DATABASE_URL") or (
+    "sqlite:///" + os.path.join(tempfile.mkdtemp(), "kai_test.db").replace("\\", "/"))
 
 from app import create_app  # noqa: E402
 from app.api.auth_seam import issue_token  # noqa: E402

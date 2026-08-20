@@ -16,9 +16,16 @@ class ParentService:
         if parent is None:
             raise NotFound("That parent no longer exists")
 
-        level = EducationLevel.coerce(education_level, parent.education_level)
-        if level is None:
-            raise ValidationError("Please choose a valid education level")
+        # "Not supplied" and "supplied but wrong" are different. Passing the
+        # current value as coerce()'s default collapses them, so a typo silently
+        # kept the old level and the form reported success -- the caller had no
+        # way to know their choice was discarded.
+        if education_level in (None, ''):
+            level = parent.education_level
+        else:
+            level = EducationLevel.coerce(education_level)
+            if level is None:
+                raise ValidationError("Please choose a valid education level")
 
         parent.firstname = firstname
         parent.lastname = lastname
@@ -37,9 +44,12 @@ class ParentService:
         if child is None:
             raise NotFound("That learner no longer exists")
 
-        lunch = LunchType.coerce(lunch_type, child.lunch_type)
-        if lunch is None:
-            raise ValidationError("Please choose a valid lunch type")
+        if lunch_type in (None, ''):
+            lunch = child.lunch_type
+        else:
+            lunch = LunchType.coerce(lunch_type)
+            if lunch is None:
+                raise ValidationError("Please choose a valid lunch type")
 
         try:
             child.age = int(age)

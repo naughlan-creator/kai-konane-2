@@ -21,3 +21,9 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Coverage artefacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
