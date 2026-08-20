@@ -1,0 +1,19 @@
+# Shared lint config for both services.
+#
+# Without this file ruff falls back to its defaults, which select a different
+# rule set -- that is why `# noqa: E402` directives looked unused and were
+# stripped by `--fix` during #7, only to be needed again here.
+
+line-length = 100
+target-version = "py310"
+
+exclude = ["venv", "migrations", "__pycache__", "instance"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[lint.per-file-ignores]
+# Seed data is a wide table of content; wrapping it would make it less readable.
+"services/api/app/seeds/content.py" = ["E501"]
+# Test fixtures mirror api payloads and read better as wide literals.
+"services/web/tests/conftest.py" = ["E501"]

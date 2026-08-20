@@ -1,0 +1,77 @@
+{# Shared building blocks for the activity and story authoring forms. #}
+
+{% macro flash_messages() %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="form-messages">
+        {% for category, message in messages %}
+          <li class="form-message form-message-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+{% endmacro %}
+
+
+{#
+  An image field that accepts either an upload or a pick from the existing
+  library. Authors mostly reuse artwork that is already on the server, so
+  forcing an upload every time was the main friction in adding content.
+#}
+{% macro image_field(label, upload_name, existing_name, images, current=None, attrs='') %}
+  <div class="image-field" data-image-field>
+    <label>{{ label }}</label>
+
+    {% if current %}
+      <div class="image-current">
+        <span>Currently:</span>
+        <img src="{{ content_image(current) }}" alt="{{ current }}">
+        <code>{{ current }}</code>
+      </div>
+    {% endif %}
+
+    <select name="{{ existing_name }}" data-image-picker {{ attrs|safe }}>
+      <option value="">— choose from the library —</option>
+      {% for image in images %}
+        <option value="{{ image }}" {% if image == current %}selected{% endif %}>{{ image }}</option>
+      {% endfor %}
+    </select>
+
+    <img class="image-preview" data-image-preview hidden
+         data-base="{{ url_for('static', filename='images/') }}"
+         src="{% if current %}{{ content_image(current) }}{% endif %}"
+         alt="Preview">
+
+    <span class="image-or">or upload a new one</span>
+    <input type="file" name="{{ upload_name }}" accept="image/*" {{ attrs|safe }}>
+  </div>
+{% endmacro %}
+
+
+{% macro level_select(name='level', current=None, required=True) %}
+  <label for="{{ name }}">Level</label>
+  <select id="{{ name }}" name="{{ name }}" {% if required %}required{% endif %}>
+    <option value="">— choose a level —</option>
+    {% for level in ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] %}
+      {# Compare on .name: comparing the enum object to a string is always false. #}
+      <option value="{{ level }}"
+        {% if current and current.name == level %}selected{% endif %}>
+        {{ level|capitalize }}
+      </option>
+    {% endfor %}
+  </select>
+{% endmacro %}
+
+
+{% macro stem_select(name='stem_code', current=None) %}
+  <label for="{{ name }}">STEM subject</label>
+  <select id="{{ name }}" name="{{ name }}" required>
+    <option value="">— choose a subject —</option>
+    {% for code in ['SCIENCE', 'TECHNOLOGY', 'ENGINEERING', 'MATH'] %}
+      <option value="{{ code }}"
+        {% if current and current.name == code %}selected{% endif %}>
+        {{ code|capitalize }}
+      </option>
+    {% endfor %}
+  </select>
+{% endmacro %}
