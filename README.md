@@ -128,8 +128,27 @@ The admin password comes from `ADMIN_PASSWORD` in `.env`; leave it blank and
 ## Tests
 
 ```bash
-cd services/api && python -m pytest      # 125 tests
-cd services/web && python -m pytest      # 126 tests
+pip install -r services/api/requirements-dev.txt
+cd services/api && python -m pytest      # 140 tests
+cd services/web && python -m pytest      # 128 tests
+```
+
+By default the api suite runs against a throwaway SQLite file, so a fresh clone
+needs no database server. Point it at Postgres — the engine production uses — to
+run it the way CI does:
+
+```bash
+docker run -d --name kai-pg -e POSTGRES_PASSWORD=testpw -e POSTGRES_USER=kai   -e POSTGRES_DB=kai_test -p 55432:5432 postgres:16-alpine
+TEST_DATABASE_URL=postgresql://kai:testpw@127.0.0.1:55432/kai_test python -m pytest
+```
+
+SQLite is forgiving about things Postgres is not — type coercion, enum handling,
+transactional DDL — so a green SQLite run is evidence, not proof.
+
+Coverage sits at 80% of `services/api/app`:
+
+```bash
+python -m pytest --cov=app --cov-report=term-missing
 ```
 
 The api's suite runs against a temporary SQLite database seeded once per

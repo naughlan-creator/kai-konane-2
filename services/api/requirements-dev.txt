@@ -1,0 +1,6 @@
+# Test and lint tooling. Kept out of requirements.txt so it never ships in the
+# image -- pytest in production is 3 MB of attack surface for no benefit.
+-r requirements.txt
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.16.3
