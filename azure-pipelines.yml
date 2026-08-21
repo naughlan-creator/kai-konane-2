@@ -1,0 +1,171 @@
+# CI for Kai Konane... runs on a self-hosted agent on Azure DevOps project
+# 3 stages, deliberately ordered by cheapest first: lint fails in seconds, tests
+# in a minute, images take several... There's no point building an image for code
+# that does not lint
+
+trigger:
+  branches:
+    include: [main]
+  tags:
+    include: ['v*']
+
+pr:
+  branches:
+    include: [main]
+
+variables:
+  PY: 'py -3.12'
+  GHCR_NS: 'ghcr.io/naughlan-creator/kai-konane-2'
+  PG_URL: 'postgresql://kai:testpw@127.0.0.1:55432/kai_test'
+
+stages:
+# validate stage
+- stage: Validate
+  displayName: Lint and test
+  jobs:
+  - job: lint
+    displayName: ruff
+    pool:
+      name: nolan-agent-pool
+    steps:
+    - script: |
+        $(PY) -m venv .cienv
+        .cienv\Scripts\python -m pip install --quiet --upgrade pip
+        .cienv\Scripts\python -m pip install --quiet ruff==0.16.3
+      displayName: 'Install ruff'
+    - script: .cienv\Scripts\python -m ruff check services/
+      displayName: 'ruff check'
+
+  - job: test_api
+    displayName: api tests (Postgres)
+    pool:
+      name: nolan-agent-pool
+    steps:
+    # A pipeline "Service container" needs a Linux agent, so on a Windows agent
+    # Postgres is started by hand... same engine, same result
+    - script: |
+        docker rm -f kai-ci-pg 2>nul
+        docker run -d --name kai-ci-pg -p 55432:5432 ^
+          -e POSTGRES_USER=kai -e POSTGRES_PASSWORD=testpw -e POSTGRES_DB=kai_test ^
+          postgres:16-alpine
+      displayName: 'Start Postgres'
+
+    - script: |
+        for /l %%i in (1,1,30) do (
+          docker exec kai-ci-pg pg_isready -U kai_test >nul 2>&1 && exit /b 0
+          timeout /t 1 >nul
+        )
+        echo Postgres never became ready & exit /b 1
+      displayName: 'Wait for Postgres'
+
+    - script: |
+        $(PY) -m venv .apienv
+        .apienv\Scripts\python -m pip install --quiet --upgrade pip
+        .apienv\Scripts\python -m pip install --quiet -r services/api/requirements-dev.txt
+      displayName: 'Install api dependencies'
+
+    - script: |
+        cd services\api
+        ..\..\.apienv\Scripts\python -m pytest ^
+          --junitxml=junit-api.xml ^
+          --cov=app --cov-report=xml:coverage-api.xml --cov-report=term
+      displayName: 'pytest (api)'
+      env:
+        TEST_DATABASE_URL: $(PG_URL)
+        SECRET_KEY: ci-only
+        API_TOKEN_SECRET: ci-only 
+
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFiles: 'services/api/junit-api.xml'
+        testRunTitle: 'api'
+
+    - task: PublishCodeCoverageResults@2
+      condition: succeededOrFailed()
+      inputs:
+        summaryFileLocation: 'services/api/coverage-api.xml'
+
+    # always() so a failed test run still tears the container down... otherwise
+    # the  next run collides on the container name and the port.
+    - script: docker rm -f kai-ci-pg
+      displayName: 'Stop Postgres'
+      condition: always()
+
+  - job: test_web
+    displayName: web tests
+    pool:
+      name: nolan-agent-pool
+    steps:
+    - script: |
+        $(PY) -m venv .webenv
+        .webenv\Scripts\python -m pip install --quiet --upgrade pip
+        .webenv\Scripts\python -m pip install --quiet -r services/web/requirements-dev.txt
+      displayName: 'Install web dependencies'
+    - script: |
+        cd services\web
+        ..\..\.webenv\Scripts\python -m pytest --junitxml=junit-web.xml
+      displayName: 'pytest (web)'
+      env:
+        SECRET_KEY: ci-only
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFiles: 'services/web/junit-web.xml'
+        testRunTitle: 'web'
+
+# build stage
+- stage: build
+  displayName: Build images
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+  - job: build
+    pool:
+      name: nolan-agent-pool
+    steps:
+    - script: docker build -t kai-api:$(Build.BuildId) services/api
+      displayName: 'Build api image'
+    - script: docker build -t kai-web:$(Build.BuildId) services/web
+      displayName: 'Build web image'
+
+# publish stage
+- stage: Publish
+  displayName: Push to GHCR
+  dependsOn: Build
+  # tags only... main gets built and tested on every push, but only a deliberate
+  # version tag produces an image anyone can deploy
+  condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))
+  jobs:
+  - job: push
+    pool:
+      name: nolan-agent-pool
+    steps:
+    - script: |
+        echo ##vso[task.setvariable variable=VERSION]$(echo $(Build.SourceBranchName) |
+        sed 's/^v//')
+      displayName: 'Derive version from tag'
+
+    - task: Docker@2
+      displayName: 'Push api'
+      inputs:
+        containerRegistry: 'ghcr-kai-konane'
+        repository: 'naughlan-creator/kai-konane-2/api'
+        command: buildAndPush
+        Dockerfile: 'services/api/Dockerfile'
+        buildContext: 'services/api'
+        tags: |
+          $(VERSION)
+          latest
+
+    - task: Docker@2
+      displayName: 'Push web'
+      inputs:
+        containerRegistry: 'ghcr-kai-konane'
+        repository: 'naughlan-creator/kai-konane-2/web'
+        command: buildAndPush
+        Dockerfile: 'services/web/Dockerfile'
+        buildContext: 'services/web'
+        tags: |
+          $(VERSION)
+          latest
