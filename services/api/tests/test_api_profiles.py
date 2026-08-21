@@ -5,10 +5,8 @@ all, which left ParentService at 27%. Every test here goes through an endpoint
 rather than calling a service directly -- a failure mode only matters if a
 client can reach it.
 """
-from conftest import flask_app
-
 from app.models import Child, Parent
-
+from conftest import flask_app
 
 # ------------------------------------------------------------- parents
 
