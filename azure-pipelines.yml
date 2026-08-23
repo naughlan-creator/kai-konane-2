@@ -141,9 +141,13 @@ stages:
     pool:
       name: nolan-agent-pool
     steps:
-    - script: |
-        echo ##vso[task.setvariable variable=VERSION]$(echo $(Build.SourceBranchName) |
-        sed 's/^v//')
+    # PowerShell, not script:. On a Windows agent `script:` runs cmd.exe,
+    # which has no sed -- and $(...) is Azure DevOps's own variable syntax,
+    # so the expression was mangled before cmd ever saw it.
+    - powershell: |
+        $version = "$(Build.SourceBranchName)" -replace '^v', ''
+        Write-Host "Publishing version $version"
+        Write-Host "##vso[task.setvariable variable=VERSION]$version"
       displayName: 'Derive version from tag'
 
     - task: Docker@2
