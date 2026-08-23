@@ -1,5 +1,7 @@
 # Kai Konane
 
+[![Build Status](https://dev.azure.com/nolantheledi/kai-konane/_apis/build/status%2Fkai-konane-ci?branchName=main)](https://dev.azure.com/nolantheledi/kai-konane/_build/latest?definitionId=1&branchName=main)
+
 A STEM learning platform for preschoolers, with separate experiences for
 children, parents and teachers. Children work through illustrated activities and
 stories; a per-child learning plan decides what they are shown; teachers and
@@ -151,8 +153,7 @@ Coverage sits at 80% of `services/api/app`:
 python -m pytest --cov=app --cov-report=term-missing
 ```
 
-The api's suite runs against a temporary SQLite database seeded once per
-session. web's runs with the api **stubbed out entirely** — no database, no
+web's suite runs with the api **stubbed out entirely** — no database, no
 network, no second process. A service that needs the rest of the stack in order
 to be tested is not really separate, so that constraint is deliberate.
 
@@ -191,7 +192,7 @@ same logic possible without duplicating it.
 
 ## Architecture
 
-Mid-decomposition from a monolith into four services:
+Four services behind a single public entrypoint:
 
 | Service | Responsibility |
 |---|---|
@@ -223,7 +224,6 @@ Recorded rather than hidden:
 - **The api image is 799 MB**, of which ~440 MB is scikit-learn and its
   dependencies — needed only to unpickle a saved model. Exporting it to ONNX
   would cut the image to roughly 250 MB.
-- No CI yet: tests and linting run locally. That is issue #12.
 - The gateway serves plain HTTP. TLS terminates there when this is deployed.
 
 ## License
