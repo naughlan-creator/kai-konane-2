@@ -25,6 +25,8 @@ This table is the honest picture of what exists today.
 | `services/web` calling `api` over HTTP | **built** (#9) |
 | Per-object authorisation in the api (`app/api/authz.py`) | **built** (#9) |
 | `gateway`, Dockerfiles, compose | **built** (#10) |
+| Postgres-backed test suite | **built** (#11) |
+| CI: lint, test, build, tag-driven GHCR publish | **built** (#12) |
 
 The split is complete. `api` serves JSON and nothing else -- no templates, no
 sessions, no Flask-Login. `web` renders HTML and holds no ORM. A test in each
@@ -516,6 +518,44 @@ Content images land in `/app/static/images` inside the api. Containers are
 disposable, so without the `media` volume every rebuild silently deletes
 everything an author uploaded -- and the pages still render, with broken
 pictures.
+
+## Continuous integration
+
+Azure Pipelines rather than GitHub Actions, because this doubles as AZ-400
+practice. The code stays on GitHub; the pipeline builds it through a service
+connection.
+
+Three stages, ordered cheapest-first: `ruff` fails in seconds, tests in a
+minute, images take several. There is no point building an image for code that
+does not lint.
+
+Publishing to GHCR is gated on a `v*` tag. `main` is linted, tested and
+image-built on every push, but an image that lands in a registry is something a
+deploy might pull, so it takes a deliberate version tag rather than a merge.
+
+### Two deviations from the issue as written
+
+**A self-hosted agent, not Microsoft-hosted.** A private Azure DevOps project
+gets no hosted parallelism without requesting the free grant — a form and a
+multi-day wait. A self-hosted agent is immediate and free. It also means the
+pipeline runs on Windows, which shapes the next point.
+
+**Postgres via `docker run`, not a pipeline service container.** Service
+containers require a Linux agent. Same engine, same coverage; the teardown step
+is conditioned on `always()` so a failed test run still removes the container,
+which otherwise collides with the next run on the container name and port.
+
+Credentials live in service connections rather than YAML or variable groups, so
+the registry token is stored once, scoped to the project, and never appears in a
+log. The GitHub side uses a fine-grained PAT limited to this repository —
+Azure Pipelines' OAuth app cannot be scoped to a single repo, which is worth
+knowing before you authorise it.
+
+### What CI caught on its first run
+
+A `ruff` I001 in `test_api_profiles.py` that had been committed because the
+tests were run but the linter was not. That is the whole argument for the
+pipeline in one line.
 
 ## Mermaid diagram
 ```mermaid
