@@ -88,6 +88,10 @@ services:
 
   gateway:
     image: ghcr.io/naughlan-creator/kai-konane-2/gateway:${IMAGE_TAG:?set IMAGE_TAG, e.g. 1.0.0}
+    environment:
+      # Compose service names; Azure Container Apps sets internal FQDNs on 80.
+      API_UPSTREAM: api:5000
+      WEB_UPSTREAM: web:5000
     ports:
       - "80:80"
     depends_on:
