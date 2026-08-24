@@ -59,6 +59,10 @@ services:
 
   gateway:
     build: ./gateway
+    environment:
+      # Compose service names; Azure Container Apps sets internal FQDNs on 80.
+      API_UPSTREAM: api:5000
+      WEB_UPSTREAM: web:5000
     ports:
       - "8080:80"
     depends_on:
