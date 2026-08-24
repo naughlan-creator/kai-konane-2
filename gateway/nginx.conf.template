@@ -55,7 +55,13 @@ server {
         proxy_pass http://$api_upstream$request_uri;
 
         proxy_http_version 1.1;
-        proxy_set_header Host               $host;
+        # The upstream's own hostname, not the caller's. Azure Container Apps
+        # dispatches internal traffic by Host header, so forwarding the
+        # gateway's public name makes its ingress unable to find the app and
+        # return its own 404. Docker's DNS resolves straight to a container, so
+        # this is invisible under compose.
+        proxy_set_header Host               $api_upstream;
+        proxy_set_header X-Forwarded-Host   $host;
         proxy_set_header X-Real-IP          $remote_addr;
         proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto  $scheme;
@@ -69,7 +75,8 @@ server {
         proxy_pass http://$web_upstream$request_uri;
 
         proxy_http_version 1.1;
-        proxy_set_header Host              $host;
+        proxy_set_header Host              $web_upstream;
+        proxy_set_header X-Forwarded-Host  $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
