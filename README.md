@@ -7,7 +7,7 @@ children, parents and teachers. Children work through illustrated activities and
 stories; a per-child learning plan decides what they are shown; teachers and
 parents follow progress and message each other about a specific learner.
 
-![A child opening an activity and answering a question](docs/img/demo.gif)
+![A child opening an activity and answering a question](docs/img/Kai-Konane-Child-Walkthrough.gif)
 
 Built as a Flask monolith, then decomposed into four services behind an nginx
 gateway and deployed to Azure Container Apps. **The deployment has since been
@@ -236,7 +236,7 @@ command, a YAML file, or `az containerapp show`.
 | ![Container Apps](docs/img/aca-overview.png) | Three apps, one external ingress |
 | ![Key Vault](docs/img/key-vault.png) | Secrets by name, never by value |
 | ![Managed identity](docs/img/managed-identity.png) | Key Vault Secrets User, read-only |
-| ![Pipeline](docs/img/pipeline.png) | Lint → tests on Postgres → build → publish |
+| ![Pipeline](docs/img/pipeline-stages.png) | Lint → tests on Postgres → build → publish |
 | ![Tests](docs/img/pipeline-tests.png) | 268 tests, both suites |
 | ![Uptime](docs/img/uptime.png) | UptimeRobot on the gateway's health endpoint |
 
@@ -249,16 +249,24 @@ line:
 ![Log Analytics showing one request id across web and api](docs/img/log-analytics.png)
 
 ```
-15ba2236…  web  /activities                   90.2ms  200
-15ba2236…  api  /api/users/4                   8.2ms  200
-15ba2236…  api  /api/learning-plans/child/4    7.6ms  200
-15ba2236…  api  /api/activities               37.8ms  200
+18:03:57.441  api  /api/users/4                200    8.3ms
+18:03:57.441  api  /api/activities/10/submit     —      —     level prediction
+18:03:57.441  api  /api/activities/10          200   15.5ms
+18:03:57.441  api  /api/activities/10/submit   201  126.4ms
+18:03:57.799  web  /activity/10/submit         302  178.9ms
 ```
 
-A child loading their activity list is one render in `web` plus three api calls,
-with web's 90ms visibly containing api's 54ms of work. That query is only
-possible because the logs are JSON objects rather than sentences — the same
-content as `"Updated level for child 4"` is readable but unqueryable.
+A child submitting an activity: one form post to `web`, three api calls
+underneath it, one shared id. `web`'s line comes **last** because it completes
+last — its 179ms visibly contains the api work that ran inside it.
+
+The row with no status is a line logged *during* the request rather than at the
+end of it: the scikit-learn level prediction, which only has a request id and a
+path because status and duration belong to the response.
+
+That query is only possible because the logs are JSON objects rather than
+sentences. `"Updated level for child 4"` is readable and unqueryable; the same
+content as fields is both.
 
 ## Known gaps
 
