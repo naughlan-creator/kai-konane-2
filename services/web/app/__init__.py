@@ -17,6 +17,9 @@ def create_app(overrides=None):
     # Without this import the loader is never attached and every template
     # render raises.
     from app import identity  # noqa: F401
+    from app.logging_setup import configure_logging
+
+    configure_logging(app, 'web')
     from app.routes.activity_routes import activity_bp
     from app.routes.admin_routes import admin_bp
     from app.routes.feedback_routes import feedback_bp

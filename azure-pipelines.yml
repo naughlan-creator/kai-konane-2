@@ -163,6 +163,18 @@ stages:
           latest
 
     - task: Docker@2
+      displayName: 'Push gateway'
+      inputs:
+        containerRegistry: 'ghcr-kai-konane'
+        repository: 'naughlan-creator/kai-konane-2/gateway'
+        command: buildAndPush
+        Dockerfile: 'gateway/Dockerfile'
+        buildContext: 'gateway'
+        tags: |
+          $(VERSION)
+          latest
+
+    - task: Docker@2
       displayName: 'Push web'
       inputs:
         containerRegistry: 'ghcr-kai-konane'
