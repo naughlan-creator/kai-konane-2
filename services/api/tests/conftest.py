@@ -7,6 +7,7 @@ makes the authorisation tests meaningful.
 import os
 import sys
 import tempfile
+from urllib.parse import urlsplit
 
 import pytest
 from flask.testing import FlaskClient
@@ -22,7 +23,26 @@ os.environ["ADMIN_PASSWORD"] = "pw"
 # fresh clone runnable with no database server -- but SQLite is forgiving about
 # things Postgres is not (type coercion, enum handling, transactional DDL), so a
 # green SQLite run is not proof.
-os.environ["DATABASE_URL"] = os.getenv("TEST_DATABASE_URL") or (
+_TEST_DB = os.getenv("TEST_DATABASE_URL")
+
+if _TEST_DB:
+    # The session fixture calls drop_all() unconditionally. Pointed at a
+    # deployed database that silently destroys it -- which has happened once
+    # already, against Azure, during a connectivity check.
+    #
+    # Local hosts only, unless someone states the intent explicitly. A test
+    # suite should not be able to delete production because of a stray
+    # environment variable left over from a previous command.
+    _host = urlsplit(_TEST_DB).hostname or ""
+    _local = _host in ("localhost", "127.0.0.1", "::1", "db", "postgres", "")
+    if not _local and os.getenv("I_KNOW_THIS_DROPS_THE_DATABASE") != "yes":
+        raise RuntimeError(
+            f"Refusing to run tests against a non-local database ({_host}). "
+            "This suite drops every table before seeding. If that is genuinely "
+            "what you want, set I_KNOW_THIS_DROPS_THE_DATABASE=yes."
+        )
+
+os.environ["DATABASE_URL"] = _TEST_DB or (
     "sqlite:///" + os.path.join(tempfile.mkdtemp(), "kai_test.db").replace("\\", "/"))
 
 from app import create_app  # noqa: E402
