@@ -7,9 +7,17 @@ children, parents and teachers. Children work through illustrated activities and
 stories; a per-child learning plan decides what they are shown; teachers and
 parents follow progress and message each other about a specific learner.
 
-Built as a Flask monolith, now decomposed into four services behind an nginx
-gateway. See [docs/architecture.md](docs/architecture.md) for the design and the
-full API contract.
+![A child opening an activity and answering a question](docs/img/demo.gif)
+
+Built as a Flask monolith, then decomposed into four services behind an nginx
+gateway and deployed to Azure Container Apps. **The deployment has since been
+torn down** — it was running on trial credit, and leaving it up would cost around
+£25/month to prove a point the screenshots already make. `docker compose up -d
+--build` reproduces the whole stack locally in one command.
+
+See [docs/architecture.md](docs/architecture.md) for the design and the full API
+contract, and [docs/adr/](docs/adr/) for the decisions that were expensive to
+reverse.
 
 ![Architecture](docs/img/architecture.png)
 
@@ -209,9 +217,48 @@ test for that boundary is a grep that returns nothing:
 grep -rn "sqlalchemy\|from app.models" services/web/
 ```
 
+[docs/adr/](docs/adr/) records the decisions that were expensive to reverse: the
+service split, single database ownership, and tag-driven image publishing.
+
 [docs/architecture.md](docs/architecture.md) carries the honest build status,
 the ~45-endpoint contract with the embed depth of each response, and the four
 serialization rules that exist because a template breaks silently without them.
+
+## It was deployed, and here is the evidence
+
+Four services on Azure Container Apps: the nginx gateway with external ingress,
+`web` and `api` internal-only, and a Postgres Flexible Server. Secrets in Key
+Vault, read at runtime by a user-assigned managed identity — no password in a
+command, a YAML file, or `az containerapp show`.
+
+| | |
+|---|---|
+| ![Container Apps](docs/img/aca-overview.png) | Three apps, one external ingress |
+| ![Key Vault](docs/img/key-vault.png) | Secrets by name, never by value |
+| ![Managed identity](docs/img/managed-identity.png) | Key Vault Secrets User, read-only |
+| ![Pipeline](docs/img/pipeline.png) | Lint → tests on Postgres → build → publish |
+| ![Tests](docs/img/pipeline-tests.png) | 268 tests, both suites |
+| ![Uptime](docs/img/uptime.png) | UptimeRobot on the gateway's health endpoint |
+
+### One request, traced across both services
+
+`web` mints a request id, forwards it as `X-Request-ID`, and `api` reuses it
+rather than minting its own. One page view is therefore one id across every log
+line:
+
+![Log Analytics showing one request id across web and api](docs/img/log-analytics.png)
+
+```
+15ba2236…  web  /activities                   90.2ms  200
+15ba2236…  api  /api/users/4                   8.2ms  200
+15ba2236…  api  /api/learning-plans/child/4    7.6ms  200
+15ba2236…  api  /api/activities               37.8ms  200
+```
+
+A child loading their activity list is one render in `web` plus three api calls,
+with web's 90ms visibly containing api's 54ms of work. That query is only
+possible because the logs are JSON objects rather than sentences — the same
+content as `"Updated level for child 4"` is readable but unqueryable.
 
 ## Known gaps
 
