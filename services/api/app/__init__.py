@@ -16,7 +16,10 @@ def create_app(overrides=None):
     # top-level import chain closes that loop and raises on startup.
     from app.api import api_bp, register_error_handlers
     from app.cli import register_cli
+    from app.logging_setup import configure_logging
     from app.routes.health import health_bp
+
+    configure_logging(app, 'api')
 
     app.register_blueprint(api_bp)
     # Not part of the JSON contract: these are hit by the orchestrator, so they

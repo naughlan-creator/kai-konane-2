@@ -1,0 +1,112 @@
+# Production topology: pull published images, never build.
+#
+#   docker compose -f compose.prod.yaml up -d
+#
+# The difference from compose.yaml is the point of it. That file builds from
+# source and is how you develop; this one pulls a specific version tag and is
+# how you deploy. A deployment that builds from source has no answer to "which
+# commit is running?", because the answer changes with the working tree.
+#
+# Images come from GHCR, published by the Azure Pipelines Publish stage on a v*
+# tag. IMAGE_TAG is required rather than defaulted to `latest`: pinning is the
+# whole reason this file exists, and a default would quietly undo it.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kai_konane}
+      POSTGRES_USER: ${POSTGRES_USER:-kai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kai} -d ${POSTGRES_DB:-kai_konane}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    # No published port. The database is reachable only from the compose
+    # network -- exposing 5432 to the host is how a demo database ends up in
+    # someone else's dataset.
+
+  api:
+    image: ghcr.io/naughlan-creator/kai-konane-2/api:${IMAGE_TAG:?set IMAGE_TAG, e.g. 1.0.0}
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kai}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-kai_konane}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      API_TOKEN_SECRET: ${API_TOKEN_SECRET:?set API_TOKEN_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - media:/app/static/images
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        # Without a cap, container logs grow until they fill the disk. On a
+        # small host that is the most likely way this falls over.
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: ghcr.io/naughlan-creator/kai-konane-2/web:${IMAGE_TAG:?set IMAGE_TAG, e.g. 1.0.0}
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${WEB_SECRET_KEY:?set WEB_SECRET_KEY}
+      API_BASE_URL: http://api:5000
+      # Empty: the browser reaches the api through the gateway on one origin.
+      API_PUBLIC_URL: ""
+      API_TIMEOUT_S: ${API_TIMEOUT_S:-5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  gateway:
+    image: ghcr.io/naughlan-creator/kai-konane-2/gateway:${IMAGE_TAG:?set IMAGE_TAG, e.g. 1.0.0}
+    ports:
+      - "80:80"
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  db_data:
+  media:
