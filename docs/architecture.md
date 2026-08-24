@@ -27,6 +27,7 @@ This table is the honest picture of what exists today.
 | `gateway`, Dockerfiles, compose | **built** (#10) |
 | Postgres-backed test suite | **built** (#11) |
 | CI: lint, test, build, tag-driven GHCR publish | **built** (#12) |
+| Deployed to Azure Container Apps | **built** (#13) |
 
 The split is complete. `api` serves JSON and nothing else -- no templates, no
 sessions, no Flask-Login. `web` renders HTML and holds no ORM. A test in each
@@ -556,6 +557,74 @@ knowing before you authorise it.
 A `ruff` I001 in `test_api_profiles.py` that had been committed because the
 tests were run but the linter was not. That is the whole argument for the
 pipeline in one line.
+
+## Deployment
+
+Azure Container Apps, three apps in one environment, fronted by the gateway:
+
+| App | Ingress | Notes |
+|---|---|---|
+| `gateway` | **external** | The only public door. ACA terminates TLS |
+| `web` | internal | Reachable only inside the environment |
+| `api` | internal | Plus an Azure Files mount for uploads |
+| Postgres | — | Flexible Server B1ms, public access with a firewall rule |
+
+Secrets live in Key Vault and are read at runtime by a user-assigned managed
+identity with the **Key Vault Secrets User** role. No password appears in a
+command, a YAML file, or `az containerapp show`. A user-assigned identity rather
+than system-assigned because a system-assigned one only exists after the app
+does, so it cannot be granted vault access beforehand -- you would deploy, fail,
+grant, redeploy.
+
+`DATABASE_URL` is stored whole rather than assembled from a password, because an
+ACA environment variable is either a literal or an entire `secretref` -- there is
+no interpolation.
+
+### Two deviations from the issue as written
+
+**No `ufw`.** There is no VM to firewall. The equivalents are ACA's internal
+ingress and the Postgres firewall rule.
+
+**TLS is managed.** The gateway does not terminate it; ACA does, with its own
+certificate. nginx is kept because ACA has no cross-app path routing -- something
+must send `/api/*` one way and everything else the other.
+
+### Four bugs that only existed in Azure
+
+Every one of them passed locally. Recorded because the pattern matters more than
+the individual fixes: **"it runs in compose" says the application is correct, not
+that the deployment is.**
+
+| Symptom | Cause |
+|---|---|
+| Gateway would crash-loop | An `upstream` block resolves DNS once at startup and nginx refuses to start if the name is unknown. Compose has `depends_on`; ACA has no ordering guarantee. Fixed with a variable in `proxy_pass`, which defers resolution -- and then requires `$request_uri` explicitly, because nginx stops appending the original URI once a variable is involved |
+| `${NGINX_LOCAL_RESOLVERS}` left literal in the config | The nginx image's own resolver script returns early unless `NGINX_ENTRYPOINT_LOCAL_RESOLVERS` is set. No error -- the variable simply stayed a string |
+| Azure's "Container App is stopped or does not exist" | `proxy_set_header Host $host` forwards the *caller's* host. ACA dispatches internal traffic by Host header and could not match the gateway's public name to an app. Docker's DNS resolves straight to a container, so nothing dispatches by Host locally |
+| Empty responses through the gateway | ACA internal ingress redirects HTTP to HTTPS by default. The gateway proxies over port 80 and got a 301 with no body. Fixed with `--allow-insecure` on the internal apps: that traffic never leaves the environment's private network |
+
+### Uploads need a volume, and the volume hides what it covers
+
+Container replicas are ephemeral. Without the Azure Files mount at
+`/app/static/images`, every restart, scale event or image update silently
+discards uploaded cover images -- and the pages still render, with broken
+pictures.
+
+Mounting it introduces its own wrinkle: the share starts empty and hides the
+seeded images baked into the api image, so they have to be uploaded once. It
+also means those images now exist in two places, and the share always wins. A
+seeded image changed in the repo will not appear on the live site.
+
+### What went wrong with the database
+
+Running the api test suite against the deployed Postgres to verify connectivity
+dropped every table and reseeded it with test fixtures, leaving the live site
+running on accounts whose password was `pw`. `conftest.py` calls `drop_all()`
+unconditionally.
+
+The verification was worth doing -- it proved the network path, credentials, SSL
+and schema before any container existed. The mistake was not reading what the
+fixture does on arrival. `conftest.py` now refuses any non-local host unless
+`I_KNOW_THIS_DROPS_THE_DATABASE=yes` is set.
 
 ## Mermaid diagram
 ```mermaid
