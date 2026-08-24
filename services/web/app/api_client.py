@@ -85,6 +85,12 @@ def _url(path):
 
 def _headers(token=None, explicit=None):
     headers = {'Accept': 'application/json'}
+    # Forward this request's id so the api's log lines carry the same one.
+    # Without it, correlating a page render with the three api calls behind it
+    # means guessing from timestamps.
+    request_id = getattr(g, 'request_id', None)
+    if request_id:
+        headers['X-Request-ID'] = request_id
     # An explicit token wins, so login can call the api before a session exists.
     token = token or session.get('api_token')
     if token:
