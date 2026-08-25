@@ -1,0 +1,18 @@
+# Normalise line endings so a clone on Windows and a clone on Linux produce
+# identical blobs. Without this, a file edited in one clone and committed from
+# another shows as entirely rewritten -- a 572-line diff on a README that gained
+# two lines, which is how this file came to exist.
+* text=auto eol=lf
+
+# Binary, never touched.
+*.png binary
+*.gif binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.svg text eol=lf
+*.wav binary
+*.mp3 binary
+*.pdf binary
+*.joblib binary
