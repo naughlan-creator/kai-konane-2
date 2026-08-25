@@ -95,10 +95,14 @@ def configure_logging(app, service):
         if hasattr(g, 'request_started'):
             duration_ms = round((time.monotonic() - g.request_started) * 1000, 1)
 
-        # Health checks run every ten seconds per service. Logging them buries
-        # real traffic and, on a per-GB-ingested log bill, costs money to hide
-        # your own signal.
-        if request.path not in ('/healthz', '/readyz'):
+        # Health checks run every ten seconds per service, and one page view
+        # pulls dozens of static assets. Logging either buries real traffic and,
+        # on a per-GB-ingested bill, costs money to hide your own signal. A
+        # static file that 404s is worth knowing about, so those still log.
+        noisy = (request.path in ('/healthz', '/readyz')
+                 or (request.path.startswith('/static/')
+                     and response.status_code < 400))
+        if not noisy:
             app.logger.info('request', extra={'context': {
                 'status': response.status_code,
                 'duration_ms': duration_ms,
