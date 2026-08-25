@@ -19,6 +19,14 @@ RUN python -m venv /opt/venv && \
 # runtime
 FROM python:3.12-slim AS runtime
 
+# Tells a registry which repository built this image. GHCR uses it to link
+# the package to the repo automatically -- without it the packages exist but
+# do not appear on the repo page, and have to be connected by hand.
+LABEL org.opencontainers.image.source="https://github.com/naughlan-creator/kai-konane-2" \
+      org.opencontainers.image.description="The domain and the database. JSON only." \
+      org.opencontainers.image.licenses="MIT"
+
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
