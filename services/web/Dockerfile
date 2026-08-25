@@ -1,6 +1,14 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-alpine
 
+# Tells a registry which repository built this image. GHCR uses it to link
+# the package to the repo automatically -- without it the packages exist but
+# do not appear on the repo page, and have to be connected by hand.
+LABEL org.opencontainers.image.source="https://github.com/naughlan-creator/kai-konane-2" \
+      org.opencontainers.image.description="The UI. Templates and sessions, no ORM." \
+      org.opencontainers.image.licenses="MIT"
+
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=production
