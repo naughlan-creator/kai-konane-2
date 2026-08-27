@@ -27,3 +27,14 @@ Thumbs.db
 .coverage.*
 htmlcov/
 coverage.xml
+
+# infrastructure
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+# State and tfvars hold credentials in plaintext. The lock file does not, and
+# is deliberately NOT ignored -- it pins exact provider versions and hashes,
+# which is what makes someone else's init reproduce this one.
+*.tfvars
+!*.tfvars.example
