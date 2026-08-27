@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# The one value deliberately NOT in this file is the Postgres password. Supply
+# it as an environment variable instead:
+#
+#   $env:TF_VAR_postgres_admin_password = "<at least 16 characters>"
+#
+# A tfvars file is a file, and a file gets committed eventually. This repository
+# has the git history to prove it.
+
+project_name = "Kai-Konane"
+environment  = "dev"
+location     = "southafricanorth"
+team_owner   = "Nolan"
+
+# No default in variables.tf on purpose. Pin the tag you actually built.
+image_tag = "v1.0.0"
+
+# 0 scales to zero when idle: nothing to pay, at the cost of a cold start.
+# api and gateway are floored at 1 in container_apps.tf regardless.
+min_replicas = 0
+max_replicas = 2
+
+# Your workstation's public IP, so migrations can be run by hand.
+# Find it with: (Invoke-RestMethod https://api.ipify.org)
+allowed_ip_addresses = []
+
+# subscription_id is omitted on purpose -- it comes from ARM_SUBSCRIPTION_ID,
+# which `az login` and CI both set. Uncomment only to override.
+# subscription_id = "00000000-0000-0000-0000-000000000000"
