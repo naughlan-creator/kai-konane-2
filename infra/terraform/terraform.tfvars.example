@@ -14,7 +14,17 @@ location     = "southafricanorth"
 team_owner   = "Nolan"
 
 # No default in variables.tf on purpose. Pin the tag you actually built.
-image_tag = "v1.0.0"
+#
+# NOT the git tag. azure-pipelines.yml strips the leading v:
+#   $version = "$(Build.SourceBranchName)" -replace '^v', ''
+# so the git tag v1.0.0 publishes as ghcr.io/.../api:1.0.0. Getting this
+# wrong is invisible until runtime -- plan succeeds, apply succeeds, and the
+# container apps sit failing to pull an image that was never published.
+#
+# Confirm against the real registry before applying:
+#   gh api user/packages/container/kai-konane-2%2Fapi/versions \
+#     --jq '.[].metadata.container.tags[]?'
+image_tag = "1.0.0"
 
 # 0 scales to zero when idle: nothing to pay, at the cost of a cold start.
 # api and gateway are floored at 1 in container_apps.tf regardless.

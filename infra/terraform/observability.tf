@@ -74,14 +74,22 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "api_errors" {
     # This query only works because the application already logs JSON with a
     # status field. Against plain text it would be a substring match that also
     # matches the number 500 appearing anywhere in a message.
+    #
+    # No `summarize` on purpose. An aggregating query produces a measure column
+    # and the API then demands `metric_measure_column` naming it -- omitting it
+    # is a 400 at apply time, because only Azure validates the shape of a
+    # criteria block. terraform validate and plan both pass.
+    #
+    # Returning raw rows and counting them with time_aggregation_method =
+    # "Count" says the same thing with less machinery: more than five matching
+    # log lines inside the 15-minute window.
     query                   = <<-QUERY
       ContainerAppConsoleLogs_CL
       | where ContainerName_s == "api"
       | extend parsed = parse_json(Log_s)
       | where toint(parsed.status) >= 500
-      | summarize AggregatedValue = count() by bin(TimeGenerated, 5m)
     QUERY
-    time_aggregation_method = "Total"
+    time_aggregation_method = "Count"
     threshold               = 5
     operator                = "GreaterThan"
 
