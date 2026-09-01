@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kai-konane
+  labels:
+    # Lets a NetworkPolicy in another namespace select this one by name later.
+    kubernetes.io/metadata.name: kai-konane

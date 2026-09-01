@@ -126,7 +126,7 @@ def upgrade():
     sa.Column('sender_id', sa.Integer(), nullable=False),
     sa.Column('recipient_id', sa.Integer(), nullable=False),
     sa.Column('subject', sa.String(length=50), nullable=False),
-    sa.Column('message', sa.Text(length=255), nullable=False),
+    sa.Column('message', sa.Text(), nullable=False),
     sa.Column('dateTime', sa.DateTime(), nullable=True),
     sa.Column('isRead', sa.Boolean(), nullable=True),
     sa.Column('child_id', sa.Integer(), nullable=True),

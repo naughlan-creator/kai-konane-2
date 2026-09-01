@@ -38,3 +38,7 @@ crash.log
 # which is what makes someone else's init reproduce this one.
 *.tfvars
 !*.tfvars.example
+
+# deployment k8s manifests
+## local cluster secret
+deploy/k8s/01-secret.yaml

@@ -1,0 +1,80 @@
+{{/*
+`helm test` -- the thing that answers "did it actually work?"
+
+Every other signal after an install is a claim about the PROCESS, not the
+system. Pods Running, probes green, `helm status: deployed` -- all three were
+true today while two of four Services did not exist. A rollout that succeeds is
+not a deployment that works.
+
+Uses the api image because it already carries curl and is already on every
+node. Pulling curlimages/curl would hit the containerd attestation problem in
+deploy/README.md note 2.
+*/}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "kai.fullname" . }}-test-connection
+  labels:
+    {{- include "kai.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    {{/* Delete the previous test pod before creating a new one, so a stale
+         pass from an earlier run is never mistaken for a current one. */}}
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: {{ include "kai.image" (dict "root" . "component" "api") }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      volumeMounts:
+        - { name: tmp, mountPath: /tmp }
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          GW={{ include "kai.fullname" . }}-gateway
+          API={{ include "kai.fullname" . }}-api
+          WEB={{ include "kai.fullname" . }}-web
+
+          echo "1. api readiness -- proves the database is genuinely reachable"
+          curl -fsS "http://${API}:5000/readyz" | grep -q ready
+
+          echo "2. web liveness"
+          curl -fsS "http://${WEB}:5000/healthz" > /dev/null
+
+          echo "3. the gateway serves the site root"
+          curl -fsS "http://${GW}/" > /dev/null
+
+          echo "4. the gateway routes /api/ to the api, not to web"
+          curl -fsS "http://${GW}/api/enums" | grep -q '"'
+
+          echo "5. an unauthenticated call to a protected endpoint is REFUSED"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://${GW}/api/users")
+          test "$code" = "401" || { echo "FAIL: expected 401, got $code"; exit 1; }
+
+          echo "6. no cluster-internal hostname leaked into the HTML"
+          if curl -fsS "http://${GW}/" | grep -q "${API}:5000"; then
+            echo "FAIL: the api's cluster hostname appears in the page source."
+            echo "API_PUBLIC_URL is set when it should be empty -- every image"
+            echo "on the site is broken for a real browser, while every page"
+            echo "still returns 200."
+            exit 1
+          fi
+
+          echo ""
+          echo "all checks passed"
+  volumes:
+    - { name: tmp, emptyDir: {} }

@@ -1,0 +1,13 @@
+# The kind ingress manifest tolerates the control-plane that does not
+# require the control-plane node, so the scheduler is free to place the
+# controller on a worker. That breaks the cluster's only route in: the 
+# controller binds hostPort 80, and only the control-plane node has the
+# extraPortMappings that publish it to the host.
+
+# Tolerating a taint is permission, not preference. This adds the preference.
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        ingress-ready: "true"

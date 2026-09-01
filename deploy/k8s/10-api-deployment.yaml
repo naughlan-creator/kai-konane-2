@@ -1,0 +1,180 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kai-api
+  namespace: kai-konane
+  labels:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+
+  # The selector is how the Deployment finds its pods. It is IMMUTABLE once
+  # created -- so it holds only labels that never change.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kai-konane
+      app.kubernetes.io/component: api
+  
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kai-konane
+        app.kubernetes.io/component: api
+    spec:
+      # The pod never calls the K8s API. Mounting a token it does not
+      # use hands anyone who reaches the container a cluster cred. free
+      automountServiceAccountToken: false
+
+      securityContext:
+        # The image already creates uid 10001 and runs as it. Restarting it here
+        # means the pod is REFUSED if a future image drops that USER line -- 
+        # the cluster stops trusting the image to police itself
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      initContainers:
+        # Migrations run here, not in the application entrypoint.
+        #
+        # In the entrypoint, every replica races to migrate on every rollout
+        - name: migrate
+          image: kai-api:dev
+          command: ["flask", "db", "upgrade"]
+          env:
+            # Flask needs to know where the app factory is.
+            - name: FLASK_APP
+              value: "app:create_app"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: DATABASE_URL
+            # config.py raises in production if either of these is missing, so
+            # the migration container needs them even though it signs nothing
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: SECRET_KEY
+            - name: API_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: API_TOKEN_SECRET
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      containers:
+        - name: api
+          image: kai-api:dev
+          ports:
+            - name: http
+              containerPort: 5000
+
+          env:
+            # The APP_ENV=development override is gone. The image sets
+            # production, DATABASE_URL is now supplied, and config.py's guard
+            # is satisfied rather than bypassed.
+            - name: APP_VERSION
+              value: "dev"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: SECRET_KEY
+            - name: API_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: API_TOKEN_SECRET
+
+          # 3 probes, 3 different questions
+          #
+          # startup -- has it finished booting? Suppresses the other two for 
+          #            up to 60s. Without it, a slow first start trips
+          #            liveness and the pod is killed mid-boot: a crash loop
+          #            caused entirely by the health check.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 12
+            periodSeconds: 5
+          
+          # liveness -- is the process alive? Points at /healthz, which never
+          #             touches the database. A slow query must not read as a
+          #             dead process, because the cure (restart) drops the 
+          #             connections that were making it slow.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+
+          # readiness -- can it serve? This one DOES check the database.
+          #              Failing it removes the pod from Service endpoints
+          #              without killing it, which is recoverable.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              # Memory only... not CPU limit. CPU limit throttles rather than
+              # kills and a throttled gunicorn worker looks exactly like a 
+              # slow database -- you debug the wrong component. Memory is 
+              # capped because unbounded memory ends with the OOM killer
+              # taking the node's other pods with it
+              memory: 512Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Every writable path must now be declared below. This is what
+            # turns "an attacker got code execution" into "an attacker got
+            # code execution and cannot write a payload to disk".
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            # SQLite writes its database file here. Without this mount the 
+            # read-only root filesystem makes the app fail on first query.
+            - name: instance
+              mountPath: /app/instance
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: instance
+          emptyDir: {}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kai-konane
+              app.kubernetes.io/component: api

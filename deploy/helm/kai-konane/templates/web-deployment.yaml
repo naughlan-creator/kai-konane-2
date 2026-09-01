@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kai.fullname" . }}-web
+  labels:
+    {{- include "kai.componentLabels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  {{- if not .Values.web.autoscaling.enabled }}
+  {{/*
+  Omitted entirely when the HPA owns it. Leaving `replicas` set means Helm
+  writes it on every upgrade and the HPA immediately overwrites it -- the two
+  fight, and the pod count oscillates on every deploy.
+  */}}
+  replicas: {{ .Values.web.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "kai.componentSelector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kai.componentLabels" (dict "root" . "component" "web") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: {{ include "kai.image" (dict "root" . "component" "web") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 5000
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: APP_VERSION
+              value: {{ .Values.image.tag | quote }}
+
+            {{/* Where the web PROCESS reaches the api. */}}
+            - name: API_BASE_URL
+              value: "http://{{ include "kai.fullname" . }}-api:5000"
+
+            {{/*
+            Where the BROWSER reaches it -- empty. NOT the same value.
+            README note 6: setting this to API_BASE_URL puts a cluster-internal
+            hostname in every <img src>; pages return 200 and every image is
+            broken.
+            */}}
+            - name: API_PUBLIC_URL
+              value: ""
+
+            - name: API_TIMEOUT_S
+              value: {{ .Values.web.apiTimeoutSeconds | quote }}
+            {{/* README note 5: a Secure cookie over http:// loops the login. */}}
+            - name: SESSION_COOKIE_SECURE
+              value: {{ .Values.web.sessionCookieSecure | quote }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: WEB_SECRET_KEY }
+          {{/* No probe touching the api, on purpose -- see README. */}}
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 10
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "kai.componentSelector" (dict "root" . "component" "web") | nindent 14 }}

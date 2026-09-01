@@ -1,0 +1,34 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kai.fullname" . }}-postgres
+  labels:
+    {{- include "kai.componentLabels" (dict "root" . "component" "postgres") | nindent 4 }}
+  annotations:
+    {{/*
+    A hook, at a lower weight than the StatefulSet.
+
+    Splitting resources between "hook" and "normal" is a real source of subtle
+    bugs, and this was one: the StatefulSet was a hook, the Service was not, so
+    the database POD existed during pre-install while its DNS NAME did not.
+    The migration failed with "could not translate host name" -- which reads
+    like a networking problem and is actually an ordering problem.
+
+    Rule of thumb: if a resource is a hook, everything it depends on and
+    everything that depends on it must be a hook too, at consistent weights.
+    */}}
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-6"
+spec:
+  {{/* Headless: stable per-pod DNS. A normal Service load-balances, which for
+       a single-writer database is data corruption once there are two. */}}
+  clusterIP: None
+  ports:
+    - port: 5432
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "kai.componentSelector" (dict "root" . "component" "postgres") | nindent 4 }}
+{{- end }}

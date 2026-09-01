@@ -1,0 +1,38 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kai.fullname" . }}
+  labels:
+    {{- include "kai.labels" . | nindent 4 }}
+  annotations:
+    {{/* The api caps uploads at 10MB; nginx-ingress defaults to 1MB, so an
+         author gets a 413 from a component they cannot see. README note. */}}
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    {{/* One rule, one backend: everything through the gateway. Routing /api/
+         straight to the api would work and is deliberately not done -- see
+         deploy/README.md. */}}
+    - host: {{ required "ingress.host is required when ingress.enabled" .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kai.fullname" . }}-gateway
+                port:
+                  number: 80
+{{- end }}

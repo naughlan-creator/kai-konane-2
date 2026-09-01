@@ -1,0 +1,98 @@
+# Defaults for a local kind cluster.
+#
+# Every value that differs between a laptop and a real cluster lives here
+# rather than in a template.
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  registry: ""      # empty = local images (kai-api:dev). Set to
+                    # ghcr.io/naughlan-creator/kai-konane-2 for a registry
+  tag: "dev"
+  pullPolicy: IfNotPresent
+
+api:
+  replicaCount: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  autoscaling:
+    # Off by default: an HPA without metrics-server sits at <unknown> and
+    # never scales. kind does not ship metrics-server -- see the note below.
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70  
+
+web:
+  replicaCount: 2
+  apiTimeoutSeconds: 10
+  # No TLS on the local ingress, so the session cookie must not be Secure --
+  # the browser silently discards it over http:// and login loops back to an
+  # empty form. values-prod.yaml sets this true
+  sessionCookieSecure: false
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+gateway:
+  replicaCount: 2
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+postgres:
+  # In-cluster Postgres as a StatefulSet: correct for a laptop and for CI,
+  # wrong for production. Running a database in a cluster makes its backups,
+  # failover and major-version upgrades your problem, and Kubernetes helps with
+  # none of them. values-prod.yaml turns this off.
+  enabled: true
+  image: postgres:16-alpine
+  database: kai_konane
+  username: kai
+  storage: 2Gi
+  storageClass: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+# Used when postgres.enabled is false. Host only -- the password comes from
+# the Secret, never from values.
+externalDatabase:
+  host: ""
+  port: 5432
+  database: kai_konane
+  username: kaiadmin
+  sslmode: require
+
+secrets:
+  # dev      -- the chart generates values and stores them in a Secret
+  # existing -- supply a Secret created out of band, which is what an External
+  #             Secrets Operator or the Key Vault CSI driver produces
+  mode: dev
+  existingSecret: ""
+  # Known demo password so a rebuild never strands you: flask seed is
+  # idempotent and will not reset a password it did not create.
+  demoPassword: "kaidemo123"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: kai-konane.local
+  tls:
+    enabled: false
+    secretName: kai-konane-tls
+  annotations: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
