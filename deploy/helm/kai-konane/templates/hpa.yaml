@@ -1,0 +1,42 @@
+{{- range $component := list "api" "web" }}
+{{- $cfg := index $.Values $component }}
+{{- if $cfg.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "kai.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "kai.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "kai.fullname" $ }}-{{ $component }}
+  minReplicas: {{ $cfg.autoscaling.minReplicas }}
+  maxReplicas: {{ $cfg.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    {{/*
+    Asymmetric on purpose. Scaling up is cheap and reversible; scaling down
+    during a lull that turns out to be a gap between bursts means paying the
+    cold start again under load.
+
+    It is also the fix for flapping: without a stabilisation window, an HPA
+    tracking a spiky signal adds and removes a replica every fifteen seconds,
+    and every removal drops in-flight requests.
+    */}}
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+---
+{{- end }}
+{{- end }}

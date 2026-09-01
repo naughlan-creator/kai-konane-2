@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kai.fullname" . }}-migrate
+  labels:
+    {{- include "kai.componentLabels" (dict "root" . "component" "migrate") | nindent 4 }}
+  annotations:
+    {{/*
+    This is the upgrade over the raw-manifest Job, and it is a real one.
+
+    A plain Job and the Deployments are created at the same time, so the api
+    pods crash-loop until migrations finish. Correct, but noisy -- and on a
+    schema change the new pods can start against the OLD schema before the Job
+    lands.
+
+    A pre-install/pre-upgrade hook makes Helm BLOCK: it creates this Job, waits
+    for completion, and only then creates the Deployments. That is ordering
+    Kubernetes itself does not provide, and Helm is the thing supplying it.
+
+    If the hook fails, `helm install` fails. The release does not half-deploy.
+    */}}
+    "helm.sh/hook": pre-install,pre-upgrade
+
+    {{/*
+    Lower weights run first. Nothing else is weighted yet, but this is the
+    knob if you later add a hook that must precede migrations.
+    */}}
+    "helm.sh/hook-weight": "0"
+
+    {{/*
+    A Job's pod template is IMMUTABLE, so re-applying a changed Job is
+    rejected -- which is why the raw-manifest version needed a manual
+    `kubectl delete job` every time. before-hook-creation deletes the previous
+    one automatically.
+
+    Deliberately NOT hook-succeeded: the completed Job stays so its logs can be
+    read. A migration you cannot inspect afterwards is a migration you cannot
+    debug.
+    */}}
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        {{- include "kai.componentLabels" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      {{/* Never, not OnFailure: leave a failed pod for inspection rather than
+           restarting in place and overwriting the logs that explain why. */}}
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: {{ include "kai.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["flask", "db", "upgrade"]
+          env:
+            - name: FLASK_APP
+              value: "app:create_app"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: DATABASE_URL }
+            {{/* config.py raises in production without these, even though the
+                 migration signs nothing. */}}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: SECRET_KEY }
+            - name: API_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: API_TOKEN_SECRET }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kai-api
+  namespace: kai-konane
+  labels:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: api
+spec:
+  # ClusterIP: reachable inside the cluster, invisible outside it. The api
+  # holds the database connection and mints tokens; the only thing that should
+  # reach it is the gateway. Same shape as internal ingress on ContainerApps.
+  type: ClusterIP
+  ports:
+    - port: 5000
+      # Refers to the port NAME on the container, not a number. Change the
+      # container's port later and this keeps working.
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: api

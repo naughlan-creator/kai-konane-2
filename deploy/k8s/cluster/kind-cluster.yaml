@@ -1,0 +1,31 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kai-konane
+
+nodes:
+  # One control plane, two workers. A single-node cluster would run everything
+  # fine and quietly make topologySpreadConstraints, PodDisruptionBudgets and 
+  # node-drain behaviour into no-ops that appear to work
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            # ingress-nginx' kind manifest schedules onto a node carrying this
+            # label. Without it the controller pod stays Pending forever and
+            # the Ingress silently routes nowhere.
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Publishes the node's port 80 on my laptop's 8080. kind runs nodes as
+      # docker containers, so without this the cluster network is unreachable
+      # from Windows and you would be stuck with port-forward
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+
+  - role: worker
+  - role: worker

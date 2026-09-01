@@ -1,0 +1,17 @@
+apiVersion: v2
+name: kai-konane
+description: A preschool STEM learning platform - gateway, web, api and Postgre.
+type: application
+
+# The chart's own version... will bump when the template changes
+version: 1.0.0
+
+# The application's version and the default image tag. Quoted deliberately:
+# an unquoted 1.10.0 is a float to YAML abd would silently become 1.1.
+appVersion: "1.0.0"
+
+home: https://github.com/naughlan-creator/kai-konane-2
+sources:
+  - https://github.com/naughlan-creator/kai-konane-2
+maintainers:
+  - name: naughlan-creator

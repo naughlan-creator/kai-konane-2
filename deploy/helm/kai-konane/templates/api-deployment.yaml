@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kai.fullname" . }}-api
+  labels:
+    {{- include "kai.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  {{/*
+  Omitted entirely when the HPA owns it. Leaving `replicas` set means Helm
+  writes it on every upgrade and the HPA immediately overwrites it -- the two
+  fight, and the pod count oscillates on every deploy.
+  */}}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "kai.componentSelector" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kai.componentLabels" (dict "root" . "component" "api") | nindent 8 }}
+      annotations:
+        {{/*
+        Roll the pods when the Secret changes. Kubernetes does NOT restart a
+        pod when a Secret it consumes as env vars is updated -- the old value
+        stays in the process. Hashing the rendered Secret into an annotation
+        changes the pod template, and that is what triggers the rollout.
+        */}}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: {{ include "kai.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 5000
+          env:
+            - name: APP_VERSION
+              value: {{ .Values.image.tag | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: DATABASE_URL }
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: SECRET_KEY }
+            - name: API_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef: { name: {{ include "kai.secretName" . }}, key: API_TOKEN_SECRET }
+          {{/* Three probes, three questions -- see deploy/README.md. */}}
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 12
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: instance, mountPath: /app/instance }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: instance, emptyDir: {} }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "kai.componentSelector" (dict "root" . "component" "api") | nindent 14 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}

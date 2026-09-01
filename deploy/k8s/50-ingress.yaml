@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kai-konane
+  namespace: kai-konane
+  labels:
+    app.kubernetes.io/name: kai-konane
+  annotations:
+    # The api caps uploads at 10MB via MAX_UPLOAD_MB. nginx-ingress defaults to
+    # 1MB, so without this an author uploading a 4MB image gets a 413 from a
+    # component they cannot see, while the api's own limit says the file is
+    # fine.
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+spec:
+  ingressClassName: nginx
+  rules:
+    # One rule, one backend: everything goes to the gateway.
+    #
+    # Routing /api/ straight to the api Service here would work, and is not
+    # done: the gateway is where request-id injection, header normalisation and
+    # upstream timeouts live. Routing around it in Kubernetes and through it
+    # everywhere else would mean the two environments differ in exactly the
+    # layer that shapes every request.
+    - host: kai-konane.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kai-gateway
+                port:
+                  number: 80

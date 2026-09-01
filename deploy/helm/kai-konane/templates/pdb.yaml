@@ -1,0 +1,26 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $component := list "api" "web" "gateway" }}
+{{/*
+A PDB constrains VOLUNTARY disruption only -- node drains, cluster upgrades,
+`kubectl drain`. It does nothing about a node failing, an OOM kill, or a crash
+loop. Reading it as an availability guarantee is the common mistake: it is a
+guarantee about what the OPERATOR may do, not about what may happen.
+
+Trap worth knowing: minAvailable: 1 with replicaCount: 1 makes the pod
+undrainable, and a node upgrade hangs forever waiting for permission that can
+never be granted. Safe here because every component defaults to 2.
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kai.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "kai.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kai.componentSelector" (dict "root" $ "component" $component) | nindent 6 }}
+---
+{{- end }}
+{{- end }}

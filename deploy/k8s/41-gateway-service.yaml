@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kai-gateway
+  namespace: kai-konane
+  labels:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: gateway

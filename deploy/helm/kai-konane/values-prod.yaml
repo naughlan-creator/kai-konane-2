@@ -1,0 +1,68 @@
+# Production overrides.
+#
+# The useful property of this file is how short it is. Every value here is one
+# a laptop and a real cluster genuinely disagree about. If it had to override
+# something absent from values.yaml, a template would have hard-coded a
+# decision it should have taken as input.
+#
+#   helm upgrade --install kai-konane deploy/helm/kai-konane \
+#     --namespace kai-konane --create-namespace \
+#     --values deploy/helm/kai-konane/values-prod.yaml \
+#     --set image.tag=1.0.0 \
+#     --set externalDatabase.host=psql-kai-konane-prod.postgres.database.azure.com \
+#     --set ingress.host=kai-konane.example.com
+
+image:
+  registry: ghcr.io/naughlan-creator/kai-konane-2
+
+# No database in the cluster. Owning its backups, failover and major-version
+# upgrades is a job Kubernetes does not help with. See deploy/README.md.
+postgres:
+  enabled: false
+
+externalDatabase:
+  host: ""            # supplied at install time
+  port: 5432
+  database: kai_konane
+  username: kaiadmin
+  sslmode: require
+
+# Helm generates nothing. The Secret is created and rotated by something that
+# exists for the purpose -- External Secrets Operator, or the Key Vault CSI
+# driver -- so a credential never passes through a chart or a CI log.
+secrets:
+  mode: existing
+  existingSecret: kai-konane-secrets
+
+api:
+  replicaCount: 3
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { memory: 1Gi }
+
+web:
+  replicaCount: 3
+  apiTimeoutSeconds: 10
+  # TLS terminates at the ingress, so the session cookie must be Secure.
+  # This is the value the local cluster inverts.
+  sessionCookieSecure: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+gateway:
+  replicaCount: 3
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ""            # supplied at install time
+  tls:
+    enabled: true
+    secretName: kai-konane-tls
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # HSTS and the redirect belong at the edge. The application never sees a
+    # plaintext request, so it cannot be the thing that upgrades one.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"

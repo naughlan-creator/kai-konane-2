@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kai-web
+  namespace: kai-konane
+  labels:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kai-konane
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kai-konane
+        app.kubernetes.io/component: web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: kai-web:dev
+          ports:
+            - name: http
+              containerPort: 5000
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: APP_VERSION
+              value: "dev"
+
+            # Where the web PROCESS reaches the api: a cluster-internal DNS
+            # name, resolvable only inside the cluster.
+            - name: API_BASE_URL
+              value: "http://kai-api:5000"
+
+            # Where the BROWSER reaches the api -- deliberately empty.
+            #
+            # These are not the same value, and conflating them is the most
+            # expensive bug in this project's history. Setting this to
+            # API_BASE_URL puts "kai-api:5000" into every <img src> on the
+            # site. Every page returns 200, every test passes, and every image
+            # is broken -- because a browser on Windows cannot resolve a
+            # Kubernetes Service name.
+            #
+            # Empty means same-origin, which is correct: the gateway routes
+            # /api/ onward, so the browser's own host works.
+            - name: API_PUBLIC_URL
+              value: ""
+
+            - name: API_TIMEOUT_S
+              value: "10"
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: WEB_SECRET_KEY
+
+            # No TLS on the local ingress. See config.py -- a Secure cookie
+            # over http:// is dropped by the browser and login silently loops.
+            - name: SESSION_COOKIE_SECURE
+              value: "false"
+
+          # No probe that touches the api, on purpose.
+          #
+          # If web reported itself unready during an api outage, every web pod
+          # would leave the Service and the site would return a connection
+          # error instead of a page saying the service is unavailable. web is
+          # built to render with the api down -- its user_loader tolerates
+          # exactly that -- and a probe that ignores the design throws the
+          # tolerance away.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 10
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kai-konane
+              app.kubernetes.io/component: web

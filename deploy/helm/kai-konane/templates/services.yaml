@@ -1,0 +1,24 @@
+{{- range $component, $port := dict "api" 5000 "web" 5000 "gateway" 80 }}
+{{/*
+Three near-identical Services from one range. Reading them side by side is how
+you notice that two agree and one does not -- which is the argument for keeping
+them in one file rather than three.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kai.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "kai.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+spec:
+  {{/* All ClusterIP. Only the Ingress reaches in, and only to the gateway. */}}
+  type: ClusterIP
+  ports:
+    - port: {{ $port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "kai.componentSelector" (dict "root" $ "component" $component) | nindent 4 }}
+---
+{{- end }}

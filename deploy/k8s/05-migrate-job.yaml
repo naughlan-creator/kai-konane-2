@@ -1,0 +1,70 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kai-migrate
+  namespace: kai-konane
+  labels:
+    app.kubernetes.io/name: kai-konane
+    app.kubernetes.io/component: migrate
+spec:
+  # One pod, one run. This is the whole point: an initContainer runs once per
+  # POD, so two replicas race on an empty database -- both start the initial
+  # migration, one wins CREATE TABLE, the other gets DuplicateTable, and
+  # Alembic's version-table lock cannot arbitrate because alembic_version does
+  # not exist yet.
+  backoffLimit: 4
+
+  # Clean up 5 minutes after success, so a stale completed Job does not sit in
+  # the namespace confusing the next person.
+  ttlSecondsAfterFinished: 300
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kai-konane
+        app.kubernetes.io/component: migrate
+    spec:
+      # Never, not OnFailure: a failed migration should leave the pod for
+      # inspection rather than restarting it in place and overwriting the logs
+      # that explain why.
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: kai-api:dev
+          command: ["flask", "db", "upgrade"]
+          env:
+            - name: FLASK_APP
+              value: "app:create_app"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: SECRET_KEY
+            - name: API_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kai-secrets
+                  key: API_TOKEN_SECRET
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

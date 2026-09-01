@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kai.fullname" . }}-gateway
+  labels:
+    {{- include "kai.componentLabels" (dict "root" . "component" "gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.gateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kai.componentSelector" (dict "root" . "component" "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kai.componentLabels" (dict "root" . "component" "gateway") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: {{ include "kai.image" (dict "root" . "component" "gateway") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            {{/*
+            Fully qualified via the kai.fqdn helper: nginx's resolver ignores
+            the search domains in /etc/resolv.conf, so a short name resolves
+            from curl in the same pod and fails from nginx. README note 4.
+            NGINX_LOCAL_RESOLVERS is deliberately NOT set -- the entrypoint
+            overwrites it from /etc/resolv.conf anyway.
+            */}}
+            - name: API_UPSTREAM
+              value: "{{ include "kai.fqdn" (dict "root" . "component" "api") }}:5000"
+            - name: WEB_UPSTREAM
+              value: "{{ include "kai.fqdn" (dict "root" . "component" "web") }}:5000"
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            {{/*
+            nginx needs four capabilities back. CHOWN alone is why the pod
+            crash-loops without them -- README, security contexts.
+            */}}
+            capabilities:
+              drop: ["ALL"]
+              add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE]
+            readOnlyRootFilesystem: false
+          volumeMounts:
+            - { name: nginx-cache, mountPath: /var/cache/nginx }
+            - { name: nginx-run,   mountPath: /var/run }
+            - { name: nginx-conf,  mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: nginx-cache, emptyDir: {} }
+        - { name: nginx-run,   emptyDir: {} }
+        - { name: nginx-conf,  emptyDir: {} }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "kai.componentSelector" (dict "root" . "component" "gateway") | nindent 14 }}
