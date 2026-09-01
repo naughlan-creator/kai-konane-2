@@ -92,7 +92,10 @@ def create_app_object(overrides=None):
 
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    app.config['SESSION_COOKIE_SECURE'] = IS_PRODUCTION
+    app.config['SESSION_COOKIE_SECURE'] = (
+        os.getenv('SESSION_COOKIE_SECURE', str(IS_PRODUCTION)).lower()
+        in ('1', 'true', 'yes')
+    )
 
     app.config.update(overrides or {})
 

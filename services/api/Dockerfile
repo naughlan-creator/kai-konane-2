@@ -13,8 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
+RUN printf 'precedence ::ffff:0:0/96  100\n' >> /etc/gai.conf
 RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+    /opt/venv/bin/pip install --no-cache-dir \
+        --retries 5 --timeout 30 \
+        -r requirements.txt
 
 # runtime
 FROM python:3.12-slim AS runtime
