@@ -99,3 +99,7 @@ affinity: {}
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
+
+observability:
+  metrics:
+    enabled: true

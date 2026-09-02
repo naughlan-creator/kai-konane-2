@@ -11,7 +11,8 @@ LABEL org.opencontainers.image.source="https://github.com/naughlan-creator/kai-k
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    APP_ENV=production
+    APP_ENV=production \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
 
 RUN apk add --no-cache curl
 
@@ -27,5 +28,6 @@ COPY --chown=appuser:appuser . .
 USER appuser
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", \
+CMD ["gunicorn", "-c", "gunicorn.conf.py", \
+     "--bind", "0.0.0.0:5000", "--workers", "4", \
      "--timeout", "30", "--access-logfile", "-", "app:create_app()"]

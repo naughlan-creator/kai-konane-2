@@ -9,7 +9,7 @@ Errors from the api arrive as `{"error": "..."}` with a meaningful status. This
 module turns each status into an exception a route can catch, so routes never
 inspect status codes and never see a `requests` object.
 """
-import requests
+import requests, time
 from flask import current_app, g, session
 
 
@@ -124,6 +124,9 @@ def request(method, path, *, json=None, params=None, token=None, headers=None):
 
     Returns None for 204, which is what DELETE endpoints send.
     """
+    from app.metrics import observe_api_call, observe_api_failure
+
+    started = time.perf_counter()
     try:
         response = _session().request(
             method,
@@ -134,11 +137,15 @@ def request(method, path, *, json=None, params=None, token=None, headers=None):
             timeout=current_app.config['API_TIMEOUT_S'],
         )
     except requests.Timeout as exc:
-        # A slow api must become a readable page, not a hung request that ties
-        # up a worker until the browser gives up.
+        # Counted separately from any status code: there is no response.
+        observe_api_failure('timeout')
         raise ApiUnavailable('The service took too long to respond.') from exc
     except requests.RequestException as exc:
+        observe_api_failure('unreachable')
         raise ApiUnavailable('The service is unavailable right now.') from exc
+
+    observe_api_call(method, path, time.perf_counter() - started,
+                     f'{response.status_code // 100}xx')
 
     if response.status_code == 204 or not response.content:
         return None

@@ -28,6 +28,11 @@ spec:
         changes the pod template, and that is what triggers the rollout.
         */}}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.observability.metrics.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+        {{- end }}
     spec:
       automountServiceAccountToken: false
       securityContext:

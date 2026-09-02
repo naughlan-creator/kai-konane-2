@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+      annotations:
+        # Restart when the scrape config changes. A ConfigMap mounted as a
+        # volume DOES update in place, but Prometheus only re-reads on SIGHUP
+        # or restart -- so without this an edited config sits on disk, unread,
+        # while everything looks healthy.
+        checksum/config: "replace-me-on-edit"
+    spec:
+      # The one pod in this project that legitimately needs a token: it calls
+      # the Kubernetes API to discover targets.
+      serviceAccountName: prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.1.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            # 24h of retention. This is a laptop and the data is disposable;
+            # on a real cluster retention is the single largest cost lever,
+            # the same way log retention was on Log Analytics.
+            - --storage.tsdb.retention.time=24h
+            # Required for the reload endpoint used below.
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet: { path: /-/ready, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /-/healthy, port: http }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus }
+            - { name: data,   mountPath: /prometheus }
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        # emptyDir, not a PVC: 24h of laptop metrics is not worth persisting,
+        # and losing it on a restart costs nothing. On a real cluster this is
+        # a PVC and the retention setting decides how big.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: prometheus

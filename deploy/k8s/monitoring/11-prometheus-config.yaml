@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      # How often every target is scraped. 15s is a deliberate trade: finer
+      # resolution costs storage and query time on every panel forever.
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      - /etc/prometheus/alerts.yml      
+
+    scrape_configs:
+      # Discover pods by annotation rather than by listing them.
+      #
+      # A pod is scraped if it carries prometheus.io/scrape: "true". That
+      # inverts ownership: the SERVICE declares it wants to be monitored,
+      # rather than the monitoring config knowing about every service. Add a
+      # fourth deployment and it appears here with no change to this file.
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+
+        relabel_configs:
+          # Keep only pods that opted in.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+
+          # Let a pod override the metrics path.
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+
+          # ...and the port. The address discovery gives us is the pod IP with
+          # the FIRST declared container port, which is not always the one
+          # serving metrics.
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+          # Carry the pod's own labels through, so a PromQL query can say
+          # `component="api"` instead of matching on pod name.
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_app_kubernetes_io_(.+)
+
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+  alerts.yml: |
+    groups:
+      - name: kai-konane
+        # How often these expressions are evaluated. Distinct from `for`
+        # below, which is how long a condition must PERSIST before firing.
+        interval: 30s
+        rules:
+
+          # ---- symptoms, not causes -------------------------------------
+          #
+          # Every rule here describes something a USER would notice. None of
+          # them alert on CPU, memory or replica count -- those are causes,
+          # and a cause that is not currently hurting anyone is not an alert,
+          # it is a dashboard panel.
+
+          - alert: KaiHighErrorRate
+            # A RATIO. Ten errors in a million requests is healthy; ten in
+            # twenty is an outage. A count-based rule pages for the first and
+            # misses the second.
+            expr: |
+              sum by (component) (rate(http_requests_total{status="5xx"}[5m]))
+                /
+              sum by (component) (rate(http_requests_total[5m]))
+                > 0.05
+            # Without `for`, a single bad scrape pages someone. Five minutes
+            # of sustained failure is a real problem; five seconds is noise.
+            for: 5m
+            labels:
+              severity: page
+            annotations:
+              summary: "{{ $labels.component }} is returning 5xx for {{ $value | humanizePercentage }} of requests"
+              runbook: "deploy/README.md -- check `kubectl logs -l app.kubernetes.io/component={{ $labels.component }} -n kai-konane`"
+
+          - alert: KaiApiUnreachableFromWeb
+            # The failures with NO HTTP STATUS: timeouts, refused connections,
+            # DNS failures. A status-code metric cannot see these, because
+            # there is no response to read a status from -- and they are the
+            # ones that mean the api is genuinely gone rather than erroring.
+            expr: sum(rate(api_client_failures_total[5m])) > 0
+            for: 3m
+            labels:
+              severity: page
+            annotations:
+              summary: "web cannot reach the api ({{ $labels.reason }})"
+              runbook: "Check api pod readiness and the kai-konane-api Service endpoints."
+
+          - alert: KaiSlowResponses
+            expr: |
+              histogram_quantile(0.95,
+                sum by (component, le) (rate(http_request_duration_seconds_bucket[5m]))
+              ) > 1
+            # Longer than the error rule: slowness is worth investigating, not
+            # worth waking someone for a ten-minute blip.
+            for: 10m
+            labels:
+              severity: ticket
+            annotations:
+              summary: "{{ $labels.component }} p95 latency is {{ $value | humanizeDuration }}"
+              runbook: "Compare against the api_client latency panel -- if web is slow and the api is not, the problem is in web."
+
+          - alert: KaiTargetDown
+            # `up` is synthesised by Prometheus itself: 1 if the last scrape
+            # succeeded, 0 if it failed. A target that fails to scrape while
+            # its pod still exists usually means the process is wedged --
+            # alive enough for the liveness probe, not alive enough to answer.
+            expr: up{job="kubernetes-pods"} == 0
+            for: 2m
+            labels:
+              severity: page
+            annotations:
+              summary: "Prometheus cannot scrape {{ $labels.pod }}"
+              runbook: "The pod is running but not serving /metrics. Check for a wedged worker."
+
+          # ---- deliberately NOT here ------------------------------------
+          #
+          # KaiNoTraffic (rate(http_requests_total) == 0). It looks useful and
+          # would fire every night on a demo cluster nobody is using. An alert
+          # that fires when nothing is wrong trains people to ignore alerts,
+          # which costs more than the coverage it adds.
+          #
+          # KaiHighCpu / KaiHighMemory. Causes, not symptoms. High CPU that is
+          # hurting nobody is not an incident; high CPU that IS hurting
+          # someone already shows up as KaiSlowResponses.
+          #
+          # KaiPodRestarted. Kubernetes restarting a pod is the system
+          # WORKING. Alert on the user-visible effect, not the recovery.
