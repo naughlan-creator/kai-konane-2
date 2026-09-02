@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-kai
+  namespace: monitoring
+data:
+  kai-konane.json: |
+    {
+      "title": "Kai Konane",
+      "uid": "kai-konane",
+      "timezone": "browser",
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request rate by service",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "sum by (component) (rate(http_requests_total[5m]))",
+              "legendFormat": "{{component}}"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Error ratio (5xx as a share of all requests)",
+          "description": "A RATIO, not a count. Ten errors in a million requests is healthy; ten in twenty is an outage. Alerting on counts pages you for the first and misses the second.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": {
+            "defaults": { "unit": "percentunit", "max": 1, "min": 0 }
+          },
+          "targets": [
+            {
+              "expr": "sum by (component) (rate(http_requests_total{status=\"5xx\"}[5m])) / sum by (component) (rate(http_requests_total[5m]))",
+              "legendFormat": "{{component}}"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "p95 latency by service",
+          "description": "histogram_quantile over the _bucket series. The 'le' label must be in the by() clause or the quantile is meaningless.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (component, le) (rate(http_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{component}}"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "p95 time web spends waiting on the api",
+          "description": "The question web's own latency metric cannot answer: how much of a page render is the api? Compare against the p95 panel to the left.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (path, le) (rate(api_client_request_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{path}}"
+            }
+          ]
+        }
+      ]
+    }

@@ -497,12 +497,201 @@ is what made them run for the first time.
 
 ---
 
+## Observability
+
+`deploy/k8s/monitoring/` runs Prometheus and Grafana in the cluster. Plain
+manifests, not a chart: they are cluster infrastructure rather than part of the
+application release, and mixing the two would make `helm uninstall kai-konane`
+a decision about whether monitoring survives.
+
+```powershell
+# The images are registry pulls, so they need the digest workaround from note 2
+kubectl apply -f deploy/k8s/monitoring/
+
+kubectl port-forward -n monitoring svc/grafana 3000:3000     # admin / kaidemo123
+kubectl port-forward -n monitoring svc/prometheus 9090:9090
+```
+
+### Logs and metrics answer different questions
+
+`logging_setup.py` answers *what happened to this ONE request* — arrive with a
+request id, leave with a story. Metrics answer *what is happening to ALL of
+them* — arrive with a suspicion, leave with a rate.
+
+Counting log lines to get a rate is a query whose cost grows with traffic, so
+it gets slower exactly as the incident gets worse. A metric is pre-aggregated:
+the cost of asking is constant.
+
+That difference produces opposite decisions about the same endpoints. `/healthz`
+is **filtered out of logs** (per-GB ingestion, and probe noise buries real
+traffic) and **kept in metrics** (no volume cost, and a probe's request rate is
+a real signal — if it stops, the kubelet is wrong, not the app). Static assets
+are filtered from both.
+
+### The three things that are easy to get wrong
+
+**Label cardinality.** A time series exists per distinct label combination.
+Labelling by `request.path` makes `/api/users/1` and `/api/users/2` separate
+series, so the metric's cardinality becomes the number of rows in the users
+table. `request.url_rule.rule` gives `/api/users/<int:user_id>` — one series
+per endpoint.
+
+The fallback matters as much as the rule: without `<unmatched>` for a `None`
+`url_rule`, a scanner probing random URLs creates a series per request, and an
+unauthenticated attacker can exhaust the monitoring server's memory just by
+making requests. Denial of service delivered through the observability stack.
+
+web's `templatise()` is a heuristic doing the same job for outbound calls — it
+collapses numeric and UUID segments. A slug would still leak one series per
+story. The correct fix is call sites passing the template; this buys most of
+the benefit for none of the churn.
+
+**Multiprocess collection.** api runs 2 gunicorn workers, web runs 4. Each is a
+separate process with a separate registry, so without `PROMETHEUS_MULTIPROC_DIR`
+a scrape reports whichever worker answered — half the real numbers for api, a
+quarter for web. Consistently wrong, which is worse than obviously broken.
+
+`gunicorn.conf.py` provides the two lifecycle hooks only the master can:
+clearing the directory at start (files surviving a restart inflate every
+counter forever) and `mark_process_dead` on worker exit (a dead worker's files
+are summed in forever otherwise).
+
+**Histogram buckets are permanent.** The library default runs to 10s, useless
+for a service whose interesting range is 10ms to 1s — everything lands in one
+bucket and the p95 is a flat line. Changing buckets later loses history. The
+0.75 boundary exists because the level-prediction endpoint loads a joblib model
+and sits just under a second.
+
+### Two subtleties in the instrumentation
+
+The in-flight gauge is decremented in `teardown_request`, **not**
+`after_request`. `after_request` does not run when a view raises, so the gauge
+would climb by one on every unhandled exception and never come down — a gauge
+that only rises is how a perfectly healthy service comes to look permanently
+overloaded.
+
+web measures its **own** api calls (`api_client_*`). web makes no database
+queries, so every slow page is slow because of an upstream call: timing the
+page says it was slow, timing the calls says which one. `api_client_failures_
+total` is separate from the status-code counter because those failures have no
+HTTP status at all — a timeout or refused connection has no response to read a
+status from, and they are the ones that mean the api is *gone* rather than
+erroring.
+
+### Prometheus discovers targets, it is not told about them
+
+A pod is scraped if it carries `prometheus.io/scrape: "true"`. That inverts
+ownership: the service declares it wants monitoring, rather than the monitoring
+config knowing about every service. Scale web from 2 to 6 and six targets
+appear within a scrape interval, with nothing edited.
+
+The `labelmap` relabel rule turns `app.kubernetes.io/component: api` into a
+`component="api"` label on every series, so dashboards can say
+`sum by (component) (...)`. Without it you would match on pod name — which
+changes on every rollout, so the graphs would break on every deploy.
+
+The cost is RBAC: Prometheus needs read access to nodes, services, endpoints
+and pods cluster-wide. It is the one pod here that legitimately mounts a
+service account token.
+
+### Alerts describe symptoms
+
+Four rules, all describing something a **user** would notice. None alert on CPU,
+memory or replica count: a cause that is not currently hurting anyone is not an
+alert, it is a dashboard panel.
+
+| Rule | Fires on | `for` |
+|---|---|---|
+| `KaiHighErrorRate` | 5xx as a **ratio** of all requests > 5% | 5m |
+| `KaiApiUnreachableFromWeb` | Failures with no HTTP status at all | 3m |
+| `KaiSlowResponses` | p95 latency > 1s | 10m |
+| `KaiTargetDown` | `up == 0` — pod alive, not answering | 2m |
+
+Ratios, not counts: ten errors in a million requests is healthy, ten in twenty
+is an outage. A count-based rule pages for the first and misses the second.
+
+Every rule has a `for` clause. Without one a single bad scrape pages someone.
+
+**Deliberately absent**, and the reasoning is the point:
+
+- `KaiNoTraffic` — would fire every night on a demo cluster nobody is using. An
+  alert that fires when nothing is wrong trains people to ignore alerts, which
+  costs more than the coverage it adds.
+- `KaiHighCpu` / `KaiHighMemory` — causes. High CPU hurting nobody is not an
+  incident; high CPU that *is* hurting someone already shows up as
+  `KaiSlowResponses`.
+- `KaiPodRestarted` — Kubernetes restarting a pod is the system **working**.
+
+Validate before applying — `promtool` ships inside the Prometheus image:
+
+```powershell
+kubectl exec -n monitoring deploy/prometheus -- promtool check rules /etc/prometheus/alerts.yml
+```
+
+### Alertmanager is not here
+
+Prometheus decides **whether** an alert fires. Alertmanager decides **who hears
+about it, grouped how, and how often** — deduplication, silences, routing to
+email or Slack. People conflate the two.
+
+It is omitted because the skill on display is rule design, and firing rules are
+visible in Prometheus's own `/alerts` page. Adding it is routing plumbing.
+
+### Dashboards are code
+
+The datasource and the dashboard are provisioned from ConfigMaps, and
+`allowUiUpdates: false` means UI edits are not persisted. That is deliberate:
+the alternative is a dashboard whose definitive version is whatever someone
+last dragged around at 2am, recoverable only from a backup.
+
+Grafana's own database is an `emptyDir` — thrown away on restart, and
+everything still works. That is the test of whether provisioning is real: **if
+deleting Grafana's database loses something, it was not provisioned.**
+
+### Notes specific to this stack
+
+**13. `PROMETHEUS_MULTIPROC_DIR` must be created by the application, not the
+Dockerfile or gunicorn.** `prometheus_client` memory-maps a file the moment a
+metric is *created*, which happens at import time. gunicorn's `on_starting`
+hook creates the directory — but only gunicorn runs it, so `flask db upgrade`,
+`flask seed` and `flask check` all died with
+`FileNotFoundError: /tmp/prometheus/gauge_livesum_1.db`.
+
+Adding observability broke the **migrations**, on the one code path with
+nothing to do with serving traffic. `metrics.py` now creates the directory
+itself, before the metric definitions.
+
+A `RUN mkdir` in the Dockerfile does not fix it: `/tmp` is an `emptyDir` mount
+in Kubernetes, which masks whatever the image had there. **A directory created
+at build time under a mount point does not exist at run time.**
+
+**14. `rule_files` is a top-level key**, a sibling of `global` and
+`scrape_configs` — not nested inside `global`. `global` holds scalars;
+`rule_files` is a list of paths. They are related in behaviour
+(`global.evaluation_interval` governs how often the rules run) while being
+siblings in structure, which is what makes the mistake easy.
+
+**15. `pip freeze > requirements.txt` is not how you add a dependency.** It
+captured 352 packages from a dev venv — including `reportlab`, `git-filter-repo`
+and `mysqlclient`, a driver for a database this project stopped using years ago.
+The build failed on `pkg-config: not found`, three layers from the cause. It was
+also written as UTF-16 by PowerShell's `>`, so git saw a binary file.
+
+`pip freeze` reproduces an *environment*; a curated `requirements.txt` declares
+a *dependency set*. The 29-line file is a design artefact.
+
+---
+
 ## Teardown
 
 ```powershell
-kubectl delete -f deploy/k8s/          # the application
-kubectl delete pvc -n kai-konane --all # the database volume, explicitly
-kind delete cluster --name kai-konane  # everything
+kubectl delete -f deploy/k8s/            # the application
+kubectl delete -f deploy/k8s/monitoring/ # Prometheus and Grafana
+kubectl delete pvc -n kai-konane --all   # the database volume, explicitly
+kind delete cluster --name kai-konane    # everything
 ```
+
+`kubectl delete -f deploy/k8s/` does not recurse, so `monitoring/` needs its own
+line — the same property that keeps `cluster/` out of an apply.
 
 The PVC step is separate on purpose — see the StatefulSet note above.
