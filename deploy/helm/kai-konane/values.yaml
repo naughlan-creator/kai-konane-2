@@ -78,6 +78,9 @@ secrets:
   existingSecret: ""
   # Known demo password so a rebuild never strands you: flask seed is
   # idempotent and will not reset a password it did not create.
+  # Local demo only. values-prod.yaml sets secrets.mode: existing, so this
+  # value is never used outside a kind cluster. Everything actually sensitive
+  # is randAlphaNum-generated in templates/secret.yaml.
   demoPassword: "kaidemo123"
 
 ingress:
