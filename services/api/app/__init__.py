@@ -17,9 +17,12 @@ def create_app(overrides=None):
     from app.api import api_bp, register_error_handlers
     from app.cli import register_cli
     from app.logging_setup import configure_logging
+    from app.metrics import configure_metrics
     from app.routes.health import health_bp
 
     configure_logging(app, 'api')
+    # After logging, so anything metrics reports has somewhere to go.
+    configure_metrics(app, 'api')
 
     app.register_blueprint(api_bp)
     # Not part of the JSON contract: these are hit by the orchestrator, so they

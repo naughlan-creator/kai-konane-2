@@ -18,8 +18,10 @@ def create_app(overrides=None):
     # render raises.
     from app import identity  # noqa: F401
     from app.logging_setup import configure_logging
+    from app.metrics import configure_metrics
 
     configure_logging(app, 'web')
+    configure_metrics(app, 'web')
     from app.routes.activity_routes import activity_bp
     from app.routes.admin_routes import admin_bp
     from app.routes.feedback_routes import feedback_bp

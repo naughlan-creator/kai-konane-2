@@ -33,7 +33,10 @@ LABEL org.opencontainers.image.source="https://github.com/naughlan-creator/kai-k
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    APP_ENV=production
+    APP_ENV=production \
+    # Under /tmp because the container runs with a read-only root filesystem
+    # in Kubernetes and /tmp is one of the three declared writable mounts.
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
@@ -52,5 +55,6 @@ RUN mkdir -p /app/static/images /app/instance && \
 USER appuser
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", \
+CMD ["gunicorn", "-c", "gunicorn.conf.py", \
+     "--bind", "0.0.0.0:5000", "--workers", "2", \
      "--timeout", "60", "--access-logfile", "-", "app:create_app()"]
