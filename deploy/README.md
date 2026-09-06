@@ -69,7 +69,7 @@ kubectl exec -n kai-konane -it deploy/kai-api -- flask seed
 
 Then add `127.0.0.1 kai-konane.local` to
 `%WINDIR%\System32\drivers\etc\hosts` (Administrator) and open
-<http://kai-konane.local:8080>.
+<http://kai-konane.local:18080>.
 
 ### Verification — four checks
 
@@ -78,16 +78,16 @@ a documented case where every page returned 200 and every image was broken.
 
 ```powershell
 # 1. The whole chain: Windows -> port mapping -> ingress -> gateway -> web
-curl.exe -s -o NUL -w "%{http_code}`n" -H "Host: kai-konane.local" http://localhost:8080/
+curl.exe -s -o NUL -w "%{http_code}`n" -H "Host: kai-konane.local" http://localhost:18080/
 
 # 2. /api/ routes to the api, not to web
-curl.exe -s -H "Host: kai-konane.local" http://localhost:8080/api/enums
+curl.exe -s -H "Host: kai-konane.local" http://localhost:18080/api/enums
 
 # 3. An unauthenticated call to a protected endpoint is REFUSED (expect 401)
-curl.exe -s -o NUL -w "%{http_code}`n" -H "Host: kai-konane.local" http://localhost:8080/api/users
+curl.exe -s -o NUL -w "%{http_code}`n" -H "Host: kai-konane.local" http://localhost:18080/api/users
 
 # 4. No cluster-internal hostname leaked into the HTML. NO OUTPUT is the pass.
-curl.exe -s -H "Host: kai-konane.local" http://localhost:8080/ | Select-String "kai-api"
+curl.exe -s -H "Host: kai-konane.local" http://localhost:18080/ | Select-String "kai-api"
 ```
 
 Check 3 matters most in principle: a deployment that silently loses
@@ -227,7 +227,7 @@ frequently does.
 
 Only the control-plane has the `extraPortMappings` that publish the
 controller's `hostPort` to Windows. A controller on a worker makes
-`localhost:8080` silently unreachable. Hence `cluster/ingress-nginx-patch.yaml`.
+`localhost:18080` silently unreachable. Hence `cluster/ingress-nginx-patch.yaml`.
 
 ### 2. Images must be pre-loaded, and registry-pulled images need a workaround
 
@@ -648,6 +648,94 @@ Grafana's own database is an `emptyDir` — thrown away on restart, and
 everything still works. That is the test of whether provisioning is real: **if
 deleting Grafana's database loses something, it was not provisioned.**
 
+### Tracing: what it adds over the request id
+
+This project already had distributed tracing, hand-rolled: `logging_setup.py`
+generates an id in web, forwards it as `X-Request-ID`, and the api reuses it.
+Building that is why the OpenTelemetry concepts were familiar rather than
+abstract. It has exactly three limits:
+
+| The request id | What a trace gives |
+|---|---|
+| Records that a request happened, not how long each part took | A span has a **duration** |
+| One flat id — four api calls share it with no record of nesting | A span has a **parent** |
+| Ours alone; no library, database or SDK speaks it | W3C `traceparent`, understood by everything |
+
+`X-Request-ID` is **kept**. It is human-sized — a person can read one off a page
+and quote it in a bug report — and the existing log format uses it. The bridge
+is twelve lines in `logging_setup.py`: `_current_trace_id()` reads the active
+span at **format** time and adds `trace_id` to the JSON line.
+
+Read at format time rather than stamped onto `g` by a `before_request` hook, for
+two reasons: no dependency on the order the two modules registered their hooks,
+and it works outside a request context, so a CLI command that opens a span still
+gets correlated log lines.
+
+The payoff is bidirectional. Copy a trace id from Jaeger and grep the logs;
+copy one from a log line and paste it into Jaeger's search.
+
+### `ParentBased` sampling, and why it is not optional
+
+If each service samples independently at 10%, a trace spanning two services is
+complete only when **both** happen to sample it — 1% of the time. The other 19%
+are traces with a hole in the middle, which is worse than no trace at all.
+
+`ParentBased(root=TraceIdRatioBased(ratio))` says: honour an incoming sampling
+decision if there is one. web is the edge, so the decision is made there once
+and the whole trace is kept or dropped together.
+
+### Each service instruments what it waits on
+
+- **api** — `SQLAlchemyInstrumentor`. Every query becomes a child span with the
+  statement attached, so a slow endpoint shows *which query*.
+- **web** — `RequestsInstrumentor`. Every api call becomes a child span, so a
+  slow page shows *which call*.
+
+`RequestsInstrumentor` is the line that makes the trace distributed: it patches
+`requests` so every call carries `traceparent`, and the api makes its spans
+children of web's. **Nothing in `api_client.py` changes** — the propagation is
+invisible at the call site, which is exactly why it is reliable. Compare
+`X-Request-ID`, which `api_client` has to remember to forward by hand.
+
+### Reading a trace
+
+A real one from this system — `GET /feedbacks/feedback/past`, 13 spans, 20.8 ms:
+
+```
+web  GET /feedbacks/feedback/past      20.77ms total   4.93ms self
+  web  GET                              5.62ms
+    api  GET /api/users/<int:user_id>   3.63ms          2.21ms self
+      api  connect / SELECT x3          ~1.0ms
+  web  GET                             10.21ms
+    api  GET /api/feedback              8.73ms          6.24ms self
+      api  connect / SELECT x3          ~2.2ms
+```
+
+Four passes, in order:
+
+1. **Shape before numbers.** Two api calls, and they are *sequential* — the
+   second starts after the first ends. Correct here (the second needs the
+   first's result), but it is the first question a trace lets you ask.
+2. **Self time, not total.** The root looks like it owns 20 ms; 16 of those are
+   spent waiting on the api. Its own work is 4.93 ms. The largest real worker in
+   the trace is `GET /api/feedback` at **6.24 ms self** against 2.2 ms of
+   queries — so ~6 ms is Python, not the database.
+3. **Gaps.** Between `connect` at +9.4 and the first `SELECT` at +11.8 there is
+   a 2.4 ms hole with no span in it: token verification and the authz check,
+   un-instrumented. Gaps show you what you have *not* instrumented, and that is
+   often where the time is.
+4. **Count repeated queries.** Three `SELECT`s per call is fine. Fifteen
+   identical spans in a row is an N+1 — a two-second diagnosis in a trace and an
+   afternoon in logs.
+
+The habit worth building: set `minDuration` in Jaeger's search above your p95,
+then compare a slow trace against a fast one for the same operation. Metrics
+tell you p95 moved; traces tell you **which span** moved.
+
+Note what this trace says: 20.8 ms end to end with 2.2 ms of database time. The
+database is not the bottleneck here — Python and HTTP hops are. Worth knowing
+before optimising a query on instinct.
+
 ### Notes specific to this stack
 
 **13. `PROMETHEUS_MULTIPROC_DIR` must be created by the application, not the
@@ -679,6 +767,66 @@ also written as UTF-16 by PowerShell's `>`, so git saw a binary file.
 
 `pip freeze` reproduces an *environment*; a curated `requirements.txt` declares
 a *dependency set*. The 29-line file is a design artefact.
+
+**16. Host ports 8080 and 8443 are unusable on this machine.** Hyper-V reserves
+dynamic TCP ranges at boot — `8027-8126` and `8379-8478` on this host — and
+Windows refuses the bind with *"an attempt was made to access a socket in a way
+forbidden by its access permissions"*. The cluster now uses **18080** and
+**18443**.
+
+The ranges are reassigned on reboot, so a port that works today can stop working
+tomorrow with nothing changed. Check before choosing:
+
+```powershell
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
+
+This one is worth remembering for how it presented. Five layers reported
+something different:
+
+| Layer | What it said |
+|---|---|
+| curl | `000` — no connection |
+| `docker port` | empty |
+| `Get-NetTCPConnection` | port 8080 **free** |
+| `docker restart <node>` | no effect |
+| Restart Docker Desktop | **worse** — every binding gone, including the API server |
+| `kind create cluster` | finally named it |
+
+The only tool that told the truth was the one that tried to **bind** rather than
+inspect. *"The port is free"* and *"you may bind this port"* are different
+questions on Windows, and only the second one mattered. It also masqueraded as
+three other bugs first, because the reservation ranges shift — so the same
+command succeeded or failed depending on when it ran.
+
+Note 3's escalation, in the order worth trying: `docker restart <node>` →
+restart Docker Desktop → `kind delete cluster` and recreate. Knowing when to
+stop is the useful part.
+
+**17. `helm upgrade` discards `--set` values.** They are not sticky: a later
+upgrade without the flag silently reverts to chart defaults. `helm get values
+<release>` printing `null` means nothing was user-supplied, whatever you passed
+last time.
+
+Anything that should persist belongs in `values.yaml`, where it is in git and
+someone can read it. `--set` is for one-off experiments.
+
+**18. Jaeger's service dropdown lists only services it has received spans
+from.** Zero spans means an empty dropdown — indistinguishable from a broken
+exporter, a wrong endpoint, or tracing switched off. The UI cannot tell you
+which.
+
+The `tracing configured` log line is the signal that separates *"setup ran and
+the exporter is trying"* from *"setup never ran"*. Check that first:
+
+```powershell
+kubectl logs -n kai-konane -l app.kubernetes.io/component=web --tail=50 |
+  Select-String "tracing configured"
+```
+
+This is the cost of the fail-safe wrapper — an exporter that cannot reach its
+collector degrades quietly by design, so the quiet has to be checked
+deliberately.
 
 ---
 
