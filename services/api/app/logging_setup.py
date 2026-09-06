@@ -50,6 +50,10 @@ class JsonFormatter(logging.Formatter):
             payload['method'] = request.method
             payload['path'] = request.path
 
+            trace_id = _current_trace_id()
+            if trace_id:
+                payload['trace_id'] = trace_id
+
         # Anything passed as extra={...} rides along as its own field, which is
         # what makes a log line queryable rather than just readable.
         for key, value in getattr(record, 'context', {}).items():
@@ -59,6 +63,27 @@ class JsonFormatter(logging.Formatter):
             payload['exception'] = self.formatException(record.exc_info)
 
         return json.dumps(payload, default=str)
+
+
+def _current_trace_id():
+    """The active trace id as 32 lowercase hex characters, or None.
+
+    032x, not str(): the W3C spec defines the id as a 32-character lowercase
+    hex string, and a backend expecting that format will silently fail to match
+    anything else -- which looks like "the trace does not exist" rather than
+    "the id is formatted wrong".
+
+    Imported inside the function so logging works with opentelemetry absent.
+    """
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        return None
+
+    context = trace.get_current_span().get_span_context()
+    if not context.is_valid:
+        return None
+    return format(context.trace_id, '032x')    
 
 
 def configure_logging(app, service):
