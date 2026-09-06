@@ -103,3 +103,10 @@ podDisruptionBudget:
 observability:
   metrics:
     enabled: true
+  tracing:
+    enabled: false
+    endpoint: http://jaeger.monitoring.svc.cluster.local:4318
+    # 1.0 locally: full fidelity, and volume is nil. In production this drops
+    # to perhaps 0.1 -- and ParentBased is what stops that producing traces
+    # with holes in the middle.
+    sampleRatio: 1.0

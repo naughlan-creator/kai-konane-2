@@ -69,6 +69,16 @@ spec:
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef: { name: {{ include "kai.secretName" . }}, key: WEB_SECRET_KEY }
+            {{- if .Values.observability.tracing.enabled }}
+            - name: OTEL_TRACES_ENABLED
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: kai-konane-web
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.tracing.endpoint | quote }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ .Values.observability.tracing.sampleRatio | quote }}
+            {{- end }}
           {{/* No probe touching the api, on purpose -- see README. */}}
           startupProbe:
             httpGet: { path: /healthz, port: http }
