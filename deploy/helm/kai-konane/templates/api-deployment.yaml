@@ -70,6 +70,21 @@ spec:
             - name: OTEL_TRACES_SAMPLER_ARG
               value: {{ .Values.observability.tracing.sampleRatio | quote }}
             {{- end }}
+            - name: AI_PROVIDER
+              value: {{ .Values.ai.provider | quote }}
+            - name: AI_TIMEOUT_S
+              value: {{ .Values.ai.timeoutSeconds | quote }}
+            {{- if eq .Values.ai.provider "azure" }}
+            - name: AI_ENDPOINT
+              value: {{ required "ai.endpoint is required when ai.provider is azure" .Values.ai.endpoint | quote }}
+            - name: AI_CHAT_DEPLOYMENT
+              value: {{ .Values.ai.chatDeployment | quote }}
+            - name: AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kai.secretName" . }}
+                  key: AI_API_KEY
+            {{- end }}
           {{/* Three probes, three questions -- see deploy/README.md. */}}
           startupProbe:
             httpGet: { path: /healthz, port: http }
