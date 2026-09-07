@@ -58,22 +58,30 @@ module "api" {
     APP_VERSION         = var.image_tag
     OTEL_SERVICE_NAME   = "kai-konane-api"
     OTEL_TRACES_ENABLED = "false"
+    AI_PROVIDER         = var.enable_ai ? "azure" : "stub"
+    AI_ENDPOINT         = var.enable_ai ? azurerm_cognitive_account.ai[0].endpoint : ""
+    AI_CHAT_DEPLOYMENT  = var.enable_ai ? azurerm_cognitive_deployment.chat[0].name : ""
   }
 
-  # versionless_id, not id. A versioned reference pins the app to one version of
-  # the secret, so rotating it in the vault changes nothing until someone
-  # redeploys -- which defeats the reason for using a vault reference.
-  secrets = {
+  # merge(), because a map literal cannot hold a conditional entry. The AI
+  # secret only exists when enable_ai is true, so referencing it
+  # unconditionally would fail on the count index of a resource that was
+  # never created.
+  secrets = merge({
     "database-url"     = { key_vault_secret_id = azurerm_key_vault_secret.app["database-url"].versionless_id }
     "secret-key"       = { key_vault_secret_id = azurerm_key_vault_secret.app["secret-key"].versionless_id }
     "api-token-secret" = { key_vault_secret_id = azurerm_key_vault_secret.app["api-token-secret"].versionless_id }
-  }
+    }, var.enable_ai ? {
+    "ai-api-key" = { key_vault_secret_id = azurerm_key_vault_secret.ai_api_key[0].versionless_id }
+  } : {})
 
-  secret_refs = {
+  secret_refs = merge({
     DATABASE_URL     = "database-url"
     SECRET_KEY       = "secret-key"
     API_TOKEN_SECRET = "api-token-secret"
-  }
+    }, var.enable_ai ? {
+    AI_API_KEY = "ai-api-key"
+  } : {})
 
   volume_mounts = {
     "/app/static/images" = { storage_name = azurerm_container_app_environment_storage.media.name }

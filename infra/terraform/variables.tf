@@ -105,3 +105,33 @@ variable "max_replicas" {
   default     = 2
   description = "Maximum replicas per container app. The ceiling on both load and bill."
 }
+
+variable "enable_ai" {
+  type        = bool
+  default     = false
+  description = "Provision Azure AI Foundry and deploy a model. Off by default: every other resource here has a predictable monthly cost, and this one bills per token -- so its cost is a function of traffic and, if something loops, of a bug."
+}
+
+variable "ai_location" {
+  type        = string
+  default     = "eastus"
+  description = "Region for the AI account. Model availability is regional and rarely matches where the app runs -- which makes every call a cross-border transfer. See the data-residency note in deploy/README.md."
+}
+
+variable "ai_model_name" {
+  type        = string
+  default     = "gpt-4o-mini"
+  description = "Model to deploy"
+}
+
+variable "ai_model_version" {
+  type        = string
+  default     = "2024-07-18"
+  description = "Model version. Pinned for the same reason image tags are: a silently upgraded model is an unreviewed change to production behaviour."
+}
+
+variable "ai_capacity" {
+  type        = number
+  default     = 10
+  description = "Thousands of tokens per minute. The throttle and the budget in one number -- exceed it and you get a 429 rather than a larger bill."
+}
