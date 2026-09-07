@@ -129,6 +129,80 @@ data:
               summary: "Prometheus cannot scrape {{ $labels.pod }}"
               runbook: "The pod is running but not serving /metrics. Check for a wedged worker."
 
+          # ---- the model and the provider ----
+
+          - alert: KaiModelPredictsOneClass
+            # The reason model_predictions_total exists.
+            #
+            # A model returning BEGINNER for every child is not an error: it
+            # raises nothing, logs nothing, fails no test, and returns a valid
+            # Level. Every other alert in this file is blind to it. The only
+            # observable difference between a working model and a dead one is
+            # the DISTRIBUTION, so that is what this measures.
+            #
+            # The second clause is not optional. Early on a fresh cluster the
+            # first prediction is trivially 100% of one class, and without a
+            # volume floor this fires on every install.
+            expr: |
+              (
+                max by (model) (increase(model_predictions_total[24h]))
+                  /
+                sum by (model) (increase(model_predictions_total[24h]))
+              ) > 0.95
+              and
+              sum by (model) (increase(model_predictions_total[24h])) > 20
+            # Hours, not minutes. A 24h window moves slowly; a short `for`
+            # would add nothing but a delay.
+            for: 30m
+            labels:
+              severity: ticket
+            annotations:
+              summary: "{{ $labels.model }} has returned one class for {{ $value | humanizePercentage }} of predictions today"
+              runbook: "Check the joblib artefact loaded at startup. A model that fails to load and falls back to a default is the usual cause -- see model_prediction_failures_total."
+
+          - alert: KaiAiDegraded
+            # Users are getting the canned story instead of a generated one.
+            # Nothing is down, no request failed, no 5xx appeared -- the
+            # degradation is INVISIBLE to every HTTP metric, which is exactly
+            # why graceful degradation needs its own alert. Silent fallback is
+            # a feature; silent fallback nobody knows about is an outage.
+            expr: |
+              sum(rate(ai_requests_total{outcome="fallback"}[15m]))
+                /
+              sum(rate(ai_requests_total[15m]))
+                > 0.2
+            for: 10m
+            labels:
+              severity: ticket
+            annotations:
+              summary: "{{ $value | humanizePercentage }} of story requests are serving the fallback"
+              runbook: "Check ai_breaker_open and the provider's status. The app is healthy by design -- this is about quality, not availability."
+
+          - alert: KaiAiBreakerOpen
+            # A gauge, so no rate(). max() because it is per-worker: one open
+            # breaker in one gunicorn worker is still a real refusal.
+            expr: max(ai_breaker_open) == 1
+            for: 5m
+            labels:
+              severity: ticket
+            annotations:
+              summary: "The AI circuit breaker has been open for 5 minutes"
+              runbook: "The breaker refuses calls after repeated failures and retries after a cooldown. Still open after 5m means the provider has not recovered."
+
+          - alert: KaiAiSpendAccelerating
+            # The alert with a currency in it. Cost scales with input length,
+            # and users control input length -- so this is a runaway-loop
+            # tripwire, not a budget report. The threshold is deliberately low
+            # for a demo system: on a real one it is a business number, and
+            # the person who sets it is not the person who wrote this file.
+            expr: sum(increase(ai_cost_usd_total[1h])) > 1
+            for: 5m
+            labels:
+              severity: ticket
+            annotations:
+              summary: "Estimated AI spend is ${{ $value | printf \"%.2f\" }} in the last hour"
+              runbook: "Check ai_requests_total by outcome for a retry loop, and the per-child cache hit rate."
+
           # ---- deliberately NOT here ------------------------------------
           #
           # KaiNoTraffic (rate(http_requests_total) == 0). It looks useful and

@@ -83,8 +83,13 @@ def predict_child_level(child_id):
         level = Level.coerce(prediction)
         if level is None:
             raise ValueError(f"Model returned an unusable level: {prediction!r}")
+
+        from app.metrics import observe_prediction
+        observe_prediction('level-predictor', level.name)
         return level
     except Exception as e:
+        from app.metrics import observe_prediction_failure
+        observe_prediction_failure('level-predictor')
         logger.error(f"Error in predict_child_level: {e}")
         logger.debug(traceback.format_exc())
         return None
