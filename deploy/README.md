@@ -830,6 +830,207 @@ deliberately.
 
 ---
 
+## The AI component
+
+`POST /api/ai/story` generates a short story for a child, from a theme the
+parent picks. It is the smallest feature that still exercises every problem an
+AI platform actually has: a dependency that is slow, priced per use, sometimes
+wrong, sometimes down, and reachable by user-supplied text.
+
+The feature is not the point. The guards around it are.
+
+### The provider seam
+
+`services/api/app/ai/provider.py` defines a `Provider` with one method, and two
+implementations: `StubProvider` and `AzureOpenAIProvider`. `AI_PROVIDER`
+chooses. The default is `stub`.
+
+That default is what makes the rest of this section testable. Every guard below
+— timeout, retry, backoff, breaker, budget, validation, degradation — runs
+against the stub, in nineteen tests, with no cloud account, no API key and no
+per-token bill. A design where the safety machinery can only be exercised
+against the real provider is a design where it is exercised in production for
+the first time.
+
+The seam also means the model is a deployment decision rather than a code one.
+Terraform names the Azure deployment `chat`, not `gpt-4o-mini`, for the same
+reason: swapping the underlying model later is a version bump in `.tfvars`, not
+a change to the application.
+
+### Failure is the normal case, not the exception
+
+The provider is remote, rate-limited and occasionally degraded, so `complete()`
+treats every call as likely to fail:
+
+**A timeout, always.** `AI_TIMEOUT_S`, default 30s. A generation call has no
+natural upper bound — without a deadline, one slow request holds a gunicorn
+worker until something else gives up first, and with two workers that is half
+the api.
+
+**Retries, but only for the right failures.** A 429 or a 5xx is worth retrying.
+A 400 is not: the request is malformed, and sending it again produces the same
+400 having spent another round-trip. `test_a_400_is_not_retried` exists because
+retrying everything is the easy mistake, and it turns one bad request into
+three.
+
+**Exponential backoff with jitter.** Without jitter, every replica that failed
+at the same moment retries at the same moment — the retry storm that keeps a
+recovering provider down. `Retry-After` is honoured when present, because the
+provider knows more about its own recovery than the backoff formula does.
+
+**A circuit breaker.** After `BREAKER_THRESHOLD` consecutive failures the
+breaker opens and calls are refused without being attempted, for
+`BREAKER_COOLDOWN_S`. Retrying a provider that is down is not resilience: it
+adds latency to every request, spends the timeout budget, and delays the
+fallback the user was going to get anyway.
+
+**Graceful degradation.** When all of that is exhausted, the endpoint returns
+`FALLBACK_STORY` with `outcome=fallback` — a 200, not a 503. The parent gets a
+story. This is the behaviour `KaiAiDegraded` alerts on, and the reason it has
+to: nothing in the HTTP metrics can see it. No request failed. No 5xx appeared.
+Silent fallback is a feature; silent fallback that nobody knows about is an
+outage that never gets reported.
+
+### Cost is a first-class metric
+
+Every call is priced. `ai_tokens_total{kind}` and `ai_cost_usd_total` are
+recorded alongside latency, and `KaiAiSpendAccelerating` fires on spend per
+hour.
+
+The numbers in `_COST_PROMPT` and `_COST_COMPLETION` are approximate and
+deliberately so — this is a signal that moves with usage, not an invoice. If it
+is ever treated as billing truth it will be wrong.
+
+Two things reduce the bill before any of that:
+
+**A per-child cache**, keyed on the normalised theme, so asking twice costs
+once. Recorded as `outcome=cache`.
+
+**Rejection is free.** A theme that fails validation never reaches the
+provider. `test_rejection_costs_nothing` asserts that by counting provider
+calls rather than by checking the response, because the response looks the same
+either way.
+
+### Untrusted text reaches a model
+
+The theme comes from a form. That makes it the same class of input as anything
+reaching a SQL query — and the same discipline applies, with one important
+difference: there is no parameterised query for a language model. Nothing
+guarantees separation the way a prepared statement does.
+
+So the defence is layered, and no layer is trusted alone:
+
+**Separation.** The instruction lives in the system message; the theme goes in
+the user message and nowhere else. `build_story_prompt()` never concatenates
+them into one string. This is the closest available analogue to parameterised
+input, and it is a convention the model honours rather than a guarantee it
+enforces — which is why it is the first layer and not the only one.
+
+**Detection, not blocking.** `looks_like_injection()` matches known shapes
+("ignore previous instructions" and relatives) and increments
+`ai_injection_attempts_total`. It does not reject. A regex over natural
+language cannot be sound, and a blocklist that silently drops legitimate input
+is worse than one that reports. The value is visibility: *someone is probing
+the model* becomes a number on a dashboard.
+
+**Length limits, enforced on the raw input.** `MAX_THEME_CHARS = 200`, checked
+in the endpoint against the untouched theme. This was originally checked after
+`clean_theme()` had already truncated to 200 — so the "reject rather than
+truncate" rule could never fire, and three tests proved it. A guard placed
+after the thing it guards against is decoration.
+
+**Output validation.** `validate_story()` requires 40–300 words. A model can
+return an apology, an empty string, or a refusal, all with a 200 status. Shape
+validation is what turns "the call succeeded" into "the response is usable".
+
+### The model gets no names
+
+`child_summary_facts()` sends age band, level and interests. It does not send
+the child's name, their id, their parent's name, or anything else that
+identifies them — and `test_child_name_is_not_sent_to_the_model` asserts it by
+inspecting the outgoing payload.
+
+The provider is a third party in another jurisdiction, so under POPIA this is a
+cross-border transfer of children's personal information, and minimisation is
+the cheapest control available: data that was never sent cannot leak, cannot be
+retained, and cannot appear in training. `ai_location` defaults to `eastus`
+because model availability is regional and rarely matches where the app runs —
+that gap is a compliance fact rather than a deployment detail, and it belongs
+in a data-processing record.
+
+### The alert this was really built for
+
+`model_predictions_total{model,level}` is not about the AI endpoint at all. It
+instruments the level-prediction model that has been in this project since long
+before any of this.
+
+That model can fail in a way nothing else here can see. If it returns
+`BEGINNER` for every child, it raises nothing, logs nothing, fails no test, and
+returns a perfectly valid `Level`. Every other alert in this repository is
+blind to it. The only observable difference between a working model and a dead
+one is the **distribution of its outputs** — so `KaiModelPredictsOneClass`
+fires when one class exceeds 95% of predictions over 24 hours, with a volume
+floor so it stays quiet on a fresh cluster's first prediction.
+
+This is the difference between monitoring a service and monitoring a model.
+Uptime, latency and error rate say a model is *serving*. They cannot say it is
+*right*.
+
+### Deliberately absent
+
+**Streaming.** It is the better UX and it changes the failure model completely:
+a response that has already started cannot be validated before the user sees
+it, so `validate_story()` would have nothing left to guard. Worth doing, worth
+doing as its own change.
+
+**Keyless authentication.** `ai.tf` grants the app's managed identity
+`Cognitive Services OpenAI User` alongside the API key it does not yet use. The
+role is provisioned so that moving off the key is a client change only — the
+stronger posture, one step away, rather than a migration.
+
+**A prompt registry.** Prompts are constants in `prompts.py`. Versioning them,
+A/B-ing them and tracking quality per version is a real platform concern and a
+real piece of work; a constant read in one place is the honest starting point.
+
+**Evaluation.** There is no measure of whether the stories are *good*. Shape is
+validated; quality is not. This is the largest gap in the component, and naming
+it is more useful than pretending a word count covers it.
+
+### Notes
+
+**19. Per-worker state is the recurring bug in this repo, in a third
+costume.** The story cache is a module-level dict, so with two gunicorn workers
+a cached story is returned only when the same worker answers — roughly half the
+time. Exactly the shape of the Prometheus registry needing
+`PROMETHEUS_MULTIPROC_DIR`, and of the random `SECRET_KEY` that failed about
+half of all authenticated requests in dev. `ai_breaker_open` uses
+`multiprocess_mode='max'` for the same reason: one worker's open breaker is
+still a real refusal.
+
+The cache is left per-worker on purpose — it is an optimisation, and a
+worker-local hit rate of roughly 50% is still roughly 50% fewer calls. The
+`SECRET_KEY` case was not optional, because a per-worker one is a bug. Knowing
+which of the three is which is the whole point of recognising the pattern.
+
+**20. A guard you have not watched fail is a guess.** Two in this issue: the
+4000-character prompt check that `clean_theme()` made unreachable, and
+`ai.apiKey` being `required` in the chart. Both were confirmed by making them
+fire — three failing tests for the first, a deliberately failing `helm
+template` for the second.
+
+**21. `kubectl rollout restart` does not apply a ConfigMap.** It restarts the
+pod, which re-reads whatever the ConfigMap currently holds. Editing the file on
+disk and restarting produces a pod that loads the *old* rules and reports no
+error at all — `/alerts` simply showed four rules instead of eight. The `AGE`
+column is the fastest tell: a ConfigMap older than your edit was never applied.
+
+Worth knowing alongside it: a rule file with a bad expression does not crash
+Prometheus. It logs the failure, keeps the previously loaded rules in memory,
+and carries on serving — which looks identical to the case above. Check the
+logs after applying, not the UI.
+
+---
+
 ## Teardown
 
 ```powershell
