@@ -77,6 +77,52 @@ if PROMETHEUS_AVAILABLE:
         'authz_denials_total', 'Authorisation refusals, by the rule that '
         'refused.', ['rule'])
 
+    # --- AI ---
+    #
+    # Every call has a price, and the price is invisible unless it is measured.
+    # Cost scales with input length, which users control -- so this is the
+    # metric that turns "why is the bill like that" into a query.
+    ai_requests_total = Counter(
+        'ai_requests_total', 'Story requests by outcome.',
+        ['outcome'])          # model | cache | fallback | rejected
+
+    ai_tokens_total = Counter(
+        'ai_tokens_total', 'Tokens consumed.',
+        ['kind'])             # prompt | completion
+
+    ai_cost_usd_total = Counter(
+        'ai_cost_usd_total', 'Estimated spend in USD.')
+
+    ai_request_duration_seconds = Histogram(
+        'ai_request_duration_seconds', 'Time waiting on the model.',
+        # Different buckets from HTTP entirely: generation takes SECONDS.
+        # Reusing the web buckets would put every call in the top bucket.
+        buckets=(0.5, 1, 2, 3, 5, 8, 12, 20, 30))
+
+    ai_injection_attempts_total = Counter(
+        'ai_injection_attempts_total',
+        'Themes matching a known injection shape. Logged, never blocked -- '
+        'this is how "someone is probing the model" becomes visible.')
+
+    ai_breaker_open = Gauge(
+        'ai_breaker_open', 'Circuit breaker state. 1 = refusing calls.',
+        multiprocess_mode='max')
+
+    # --- the level-prediction model --------------------------------------
+    #
+    # THE metric that would have caught the model returning BEGINNER for every
+    # child. A constant prediction is a VALID prediction: no test failed, no
+    # alert fired, no error was logged. Nothing in the system could tell the
+    # difference between a working model and a broken one -- because the only
+    # difference was the distribution.
+    model_predictions_total = Counter(
+        'model_predictions_total', 'Level predictions by class.',
+        ['model', 'level'])
+
+    model_prediction_failures_total = Counter(
+        'model_prediction_failures_total',
+        'Predictions that raised or returned an unusable value.', ['model'])
+
 
 def _endpoint_label():
     """The route pattern, never the concrete path.
@@ -95,6 +141,62 @@ def _endpoint_label():
     if request.url_rule is not None:
         return request.url_rule.rule
     return '<unmatched>'
+
+
+# --- AI and model recording -----------------------------------------------
+#
+# Plain module-level functions rather than methods on anything: provider.py
+# and level_predictor.py import them directly, and neither should need a Flask
+# app context to record a number.
+
+# Rough per-1k-token prices, overridable. Deliberately approximate -- the point
+# is a cost SIGNAL that moves with usage, not an invoice. If this is ever
+# treated as billing truth it will be wrong.
+_COST_PROMPT = float(os.getenv('AI_COST_PER_1K_PROMPT', '0.00015'))
+_COST_COMPLETION = float(os.getenv('AI_COST_PER_1K_COMPLETION', '0.0006'))
+
+
+def observe_ai_call(outcome, duration=None, prompt_tokens=0,
+                    completion_tokens=0):
+    if not PROMETHEUS_AVAILABLE:
+        return
+    ai_requests_total.labels(outcome=outcome).inc()
+    if duration is not None:
+        ai_request_duration_seconds.observe(duration)
+    if prompt_tokens:
+        ai_tokens_total.labels(kind='prompt').inc(prompt_tokens)
+    if completion_tokens:
+        ai_tokens_total.labels(kind='completion').inc(completion_tokens)
+    cost = (prompt_tokens / 1000 * _COST_PROMPT
+            + completion_tokens / 1000 * _COST_COMPLETION)
+    if cost:
+        ai_cost_usd_total.inc(cost)
+
+
+def observe_ai_injection():
+    if PROMETHEUS_AVAILABLE:
+        ai_injection_attempts_total.inc()
+
+
+def observe_breaker(is_open):
+    if PROMETHEUS_AVAILABLE:
+        ai_breaker_open.set(1 if is_open else 0)
+
+
+def observe_prediction(model, level):
+    """Record a prediction by class.
+
+    Alert on any single class exceeding ~95% over a day. That is the whole fix
+    for a failure mode where a degenerate model is indistinguishable from a
+    working one.
+    """
+    if PROMETHEUS_AVAILABLE:
+        model_predictions_total.labels(model=model, level=str(level)).inc()
+
+
+def observe_prediction_failure(model):
+    if PROMETHEUS_AVAILABLE:
+        model_prediction_failures_total.labels(model=model).inc()
 
 
 def configure_metrics(app, service):

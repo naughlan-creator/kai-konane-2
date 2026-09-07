@@ -110,3 +110,19 @@ observability:
     # to perhaps 0.1 -- and ParentBased is what stops that producing traces
     # with holes in the middle.
     sampleRatio: 1.0
+
+ai:
+  # Stub by default. The provider seam means every guard -- timeout, retry,
+  # budget, breaker, validation, degradation -- is exercised with no cloud
+  # account and no per-token bill. Set to "azure" with an endpoint to go live.
+  provider: stub
+  endpoint: ""
+  chatDeployment: chat
+  apiVersion: "2024-10-21"
+  timeoutSeconds: 30
+  maxThemeChars: 200
+  # Only used when provider is azure AND secrets.mode is dev. In prod
+  # secrets.mode is existing, so this key comes from whatever populates that
+  # Secret -- Key Vault CSI, External Secrets -- and never passes through
+  # values.yaml or a terminal history.
+  apiKey: ""

@@ -20,6 +20,8 @@ def create_app(overrides=None):
     from app.metrics import configure_metrics
     from app.tracing import configure_tracing
     from app.routes.health import health_bp
+    from app.ai import ai_bp
+    from app.api import api_bp, register_error_handlers
 
     configure_logging(app, 'api')
     # After logging, so anything metrics reports has somewhere to go.
@@ -32,6 +34,7 @@ def create_app(overrides=None):
     # Not part of the JSON contract: these are hit by the orchestrator, so they
     # sit at the root rather than under /api.
     app.register_blueprint(health_bp)
+    app.register_blueprint(ai_bp)
 
     register_error_handlers(app)
     register_cli(app)

@@ -18,11 +18,21 @@ def test_the_api_serves_no_html():
 
     A template route reappearing here means presentation logic has leaked back
     across the boundary -- which is exactly how the monolith re-forms.
+    
+    The three exceptions are all INFRASTRUCTURE endpoints, not part of the JSON
+    contract, which is why they sit at the root rather than under /api:
+
+      /healthz  /readyz   the orchestrator's liveness and readiness probes
+      /metrics             Prometheus scrapes it; the gateway does not route
+                           to it, and web never calls it
+
+    This list is deliberately exhaustive rather than a prefix match. Adding a
+    fourth should require editing this line and thinking about why.
     """
     paths = [str(rule) for rule in flask_app.url_map.iter_rules()]
     non_api = [p for p in paths
                if not p.startswith('/api/') and not p.startswith('/static/')]
-    assert sorted(non_api) == ['/healthz', '/readyz'], non_api
+    assert sorted(non_api) == ['/healthz', '/metrics', '/readyz'], non_api
 
 
 def test_healthz_reports_ok(client):
