@@ -22,7 +22,8 @@ X-Request-ID is KEPT, not replaced. It is human-sized -- a person can read one
 off a page and quote it in a bug report -- and the existing log format and KQL
 queries use it. The right move is a bridge, not a migration.
 """
-import logging, os
+import logging
+import os
 
 logger = logging.getLogger(__name__)
 

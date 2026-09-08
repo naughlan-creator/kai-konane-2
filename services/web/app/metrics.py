@@ -22,8 +22,13 @@ if _MULTIPROC_DIR:
 
 try:
     from prometheus_client import (
-        CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram,
-        generate_latest, multiprocess,
+        CONTENT_TYPE_LATEST,
+        CollectorRegistry,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
+        multiprocess,
     )
     PROMETHEUS_AVAILABLE = True
 except ImportError:  # pragma: no cover

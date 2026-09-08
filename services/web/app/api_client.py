@@ -9,7 +9,9 @@ Errors from the api arrive as `{"error": "..."}` with a meaningful status. This
 module turns each status into an exception a route can catch, so routes never
 inspect status codes and never see a `requests` object.
 """
-import requests, time
+import time
+
+import requests
 from flask import current_app, g, session
 
 
