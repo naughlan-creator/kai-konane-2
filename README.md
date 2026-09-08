@@ -1,6 +1,6 @@
 # Kai Konane
 
-[![Build Status](https://dev.azure.com/nolantheledi/kai-konane/_apis/build/status%2Fkai-konane-ci?branchName=main)](https://dev.azure.com/nolantheledi/kai-konane/_build/latest?definitionId=1&branchName=main)
+[![CI](https://github.com/naughlan-creator/kai-konane-2/actions/workflows/ci.yml/badge.svg)](https://github.com/naughlan-creator/kai-konane-2/actions/workflows/ci.yml)
 
 A STEM learning platform for preschoolers, with separate experiences for
 children, parents and teachers. Children work through illustrated activities and

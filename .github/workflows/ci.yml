@@ -291,3 +291,89 @@ jobs:
             -strict -summary -ignore-missing-schemas \
             -ignore-filename-pattern 'cluster/' \
             /w/deploy/k8s
+
+  images:
+    name: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # THIS is where "cheapest first" earns its keep. Six jobs run in parallel
+    # for about a minute; only then does anything spend runner time on three
+    # docker builds. Nothing here builds an image for code that does not lint,
+    # does not pass, or renders a chart that will not apply.
+    needs: [lint, test-api, test-web, validate-terraform, validate-helm, validate-manifests]
+
+    permissions:
+      contents: read
+      # Write access to GHCR. Granted at the JOB, not the workflow -- the test
+      # jobs run third party code from requirements files, and a token that can
+      # publish images should not be sitting in that environment.
+      packages: write
+      # For the provenance attestation below.
+      id-token: write
+      attestations: write
+
+    strategy:
+      # One broken Dockerfile should not hide the state of the other two.
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: services/api
+          - name: web
+            context: services/web
+          - name: gateway
+            context: gateway
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Only on a tag -- there is nothing to log in for otherwise, and a
+      # registry credential that exists on every pull-request run is a
+      # credential available to every pull request.
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/naughlan-creator/kai-konane-2/${{ matrix.name }}
+          # Same names the Azure pipeline publishes, so nothing that already
+          # pulls these images has to change.
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          # Builds on every PR, pushes on none of them. The build IS the test:
+          # #38 broke three times on dependency compilation alone -- pandas,
+          # alembic, mysqlclient -- and once on a missing `apk add curl`. Every
+          # one of those was found by building, not by any test.
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache shared across runs, so an unchanged requirements.txt
+          # does not recompile psycopg2 on every pull request.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Signed, verifiable provenance: which workflow, at which commit, built
+      # this exact digest. `docker pull` cannot tell you that, and "the image
+      # in the registry matches the source" is otherwise an act of faith.
+      - name: Attest provenance
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/naughlan-creator/kai-konane-2/${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
