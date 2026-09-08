@@ -37,9 +37,9 @@ jobs:
     name: ruff
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -88,9 +88,9 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -117,7 +117,7 @@ jobs:
       # them.
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: api-test-results
           path: |
@@ -129,9 +129,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -150,7 +150,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-test-results
           path: services/web/junit-web.xml
@@ -163,9 +163,9 @@ jobs:
       run:
         working-directory: infra/terraform
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
@@ -191,9 +191,9 @@ jobs:
     env:
       CHART: deploy/helm/kai-konane
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           # Matches the local v4.0.5. Helm 3 and Helm 4 differ in template
           # behaviour; a chart that renders on one and not the other is a
@@ -247,9 +247,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -277,7 +277,17 @@ jobs:
       # and ingress-nginx-patch.yaml is a patch fragment. Neither is a
       # Kubernetes object and neither has a schema to check against.
       - name: Kubeconform (raw manifests)
+        # A DIRECTORY, not a glob. `/w/deploy/k8s/*.yaml` is expanded by the
+        # runner's shell, where /w does not exist -- so it matches nothing,
+        # passes through literally, and kubeconform (which does not glob) is
+        # handed a path with an asterisk in it. Handing it the directory lets
+        # it walk the tree itself, monitoring/ included.
+        #
+        # cluster/ is excluded because kind-cluster.yaml is a kind config and
+        # ingress-nginx-patch.yaml is a patch fragment. Neither is a Kubernetes
+        # object, so neither has a schema to validate against.
         run: |
-          docker run -rm -v "$PWD:/w" ghcr.io/yannh/kubeconform:v0.6.7 \
-            - strict -summary -ignore-missing-schemas \
-            /w/deploy/k8s/*.yaml /w/deploy/k8s/monitoring/*.yaml
+          docker run --rm -v "$PWD:/w" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary -ignore-missing-schemas \
+            -ignore-filename-pattern 'cluster/' \
+            /w/deploy/k8s
