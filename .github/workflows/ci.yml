@@ -123,3 +123,149 @@ jobs:
           path: |
             services/api/junit-api.xml
             services/api/coverage-api.xml
+
+  test-web:
+    name: web tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/web/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r services/web/requirements-dev.txt
+
+      # No database and no service container. web owns no data -- it calls the
+      # api -- so its tests stub the api client.
+      - name: pytest
+        working-directory: services/web
+        env:
+          SECRET_KEY: ci-only
+        run: pytest --junitxml=junit-web.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-results
+          path: services/web/junit-web.xml
+
+  validate-terraform:
+    name: terraform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: fmt
+        # -check fails rather than rewriting. CI that silently reformats your
+        # code is CI you stop reading.
+        run: terraform fmt -check -recursive
+
+      - name: init (no backend)
+        # Downloads providers and modules -- validate cannot run without them
+        # -- while touching no remote state and needing no Azure credentials.
+        # This is the line versions.tf was written to make possible.
+        run: terraform init -backend=false
+
+      - name: validate
+        run: terraform validate
+
+  validate-helm:
+    name: helm
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CHART: deploy/helm/kai-konane
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          # Matches the local v4.0.5. Helm 3 and Helm 4 differ in template
+          # behaviour; a chart that renders on one and not the other is a
+          # difference you want CI to surface, not absorb.
+          version: v4.0.5
+
+      - name: lint (default values)
+        run: helm lint $CHART
+
+      - name: lint (production values)
+        run: helm lint $CHART -f $CHART/values-prod.yaml
+
+      # lint parses. template RENDERS -- which is where a missing `---` inside
+      # a range, or a required that fires when it should not, actually shows
+      # up. #37 lost two of three Services to exactly that and lint was green.
+      - name: render (default values)
+        run: helm template kai-konane $CHART > /tmp/render-default.yaml
+
+      - name: render (production values)
+        run: helm template kai-konane $CHART -f $CHART/values-prod.yaml > /tmp/render-prod.yaml
+
+      # A NEGATIVE test. Every other step here asserts something works; this
+      # asserts something FAILS. The ai.apiKey guard was added in #40 and
+      # confirmed by watching it fire once, by hand -- this is what keeps it
+      # confirmed after someone refactors the Secret template.
+      - name: the ai.apiKey guard must fire
+        run: |
+          if helm template kai-konane $CHART \
+               --set ai.provider=azure \
+               --set ai.endpoint=https://example.openai.azure.com \
+               > /dev/null 2>&1; then
+            echo "::error::helm rendered with ai.provider=azure and no ai.apiKey; the required guard is gone"
+            exit 1
+          fi
+          echo "guard fired as expected"
+
+  validate-manifests:
+    name: manifests and alert rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install pyyaml
+
+      # The rules live inside a ConfigMap, so promtool cannot read the file
+      # directly -- it has to be lifted out of .data first.
+      - name: Extract alerts.yml from the ConfigMap
+        run: |
+          python -c "
+          import yaml 
+          doc = yaml.safe_load(open('deploy/k8s/monitoring/11-prometheus-config.yaml'))
+          open('/tmp/alerts.yml', 'w').write(doc['data']['alerts.yml'])
+          "
+
+      - name: promtool check rules
+        run: |
+          docker run --rm -v /tmp:/w prom/prometheus:v2.54.1 \
+            promtool check rules /w/alerts.yml
+
+      # Schema validation for the raw manifests: catches a mistyped field or a
+      # wrong apiVersion, which kubectl only reports when you apply.
+      #
+      # cluster/ is excluded on purpose -- kind-cluster.yaml is a kind config
+      # and ingress-nginx-patch.yaml is a patch fragment. Neither is a
+      # Kubernetes object and neither has a schema to check against.
+      - name: Kubeconform (raw manifests)
+        run: |
+          docker run -rm -v "$PWD:/w" ghcr.io/yannh/kubeconform:v0.6.7 \
+            - strict -summary -ignore-missing-schemas \
+            /w/deploy/k8s/*.yaml /w/deploy/k8s/monitoring/*.yaml
