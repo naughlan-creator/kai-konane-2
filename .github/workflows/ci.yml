@@ -1,0 +1,125 @@
+# CI on GitHub Actions.
+#
+# Supersedes azure-pipelines.yml, which is kept for reference. That pipeline
+# runs on a self-hosted Windows agent, so it only runs when that machine is on
+# and its results never reach a GitHub pull request -- which is how a broken
+# test survived a day in #40.
+#
+# Job order is by cost, cheapest first: lint fails in seconds, tests in a
+# minute, images take several. There is no point building an image for code
+# that does not lint.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+# One run per ref. Pushing 3 times to a PR should not leave three runs
+# competing for runners -- but a run on main or on a tag is NOT cancelled,
+# because cancelling a publish halfway is how a registry ends up with a tag
+# pointing at a partial push.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
+# Least privilege at the top, widened per job where needed. The default token
+# is writable; a workflow that only reads code should say so, because a 
+# compromised dependency in a test run inherits whatever this grants.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/*/requirements-dev.txt
+
+      # The pin is read FROM requirements-dev.txt rather than repeated here.
+      # A version written in two places drifts, and the failure mode is CI
+      # passing on a rule set your machine does not have -- or the reverse,
+      # which is worse because it looks like your code is wrong.
+      - name: Install ruff at the pinned version
+        run: grep '^ruff==' services/api/requirements-dev.txt | xargs pip install
+
+      - run: ruff check services/
+
+  test-api:
+    name: api tests (Postgres)
+    runs-on: ubuntu-latest
+    # A hung test should cost ten mins of runner time, not the six-hour
+    # default. The number is a smoke alarm, not a performance target.
+    timeout-minutes: 15
+
+    # Native on Linux runners. Azure pipelines does this with a manual
+    # 'docker run', a 'for /l' polling loop and a cleanup step conditioned on
+    # always() -- all of which exist only because the agent is Windows, where
+    # service containers are unavailable.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kai
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: kai_test
+        ports:
+          - 5432:5432
+        # health check IS the wait loop. The job does not start a step
+        # until this passes, so there is no race and nothing to poll.
+        #
+        # -U kai, not -U kai_test: -U takes a ROLE. The Azure pipeline passes
+        # the database name there and still reports ready, beacuse pg_isready
+        # tests whether the server accepts connections and never authenticates
+        # -- a check that cannot fail is not a check.
+        options: >-
+          --health-cmd "pg_isready -U kai -d kai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/api/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r services/api/requirements-dev.txt
+
+      - name: pyest
+        working-directory: services/api
+        env:
+          # 127.0.0.1, never localhost. On these runners localhost resolves to
+          # ::1 first, and the service container's port is published on IPv4
+          # only -- so the connection fails at the address, not the database.
+          TEST_DATABASE_URL: postgresql://kai:testpw@127.0.0.1:5432/kai_test
+          SECRET_KEY: ci-only
+          API_TOKEN_SECRET: ci-only
+        run: |
+          pytest --junitxml=junit-api.xml \
+                 --cov=app --cov-report=xml:coverage-api.xml --cov-report=term
+
+      # if: always() -- a failed run is exactly when you want the report.
+      # Conditioning artefacts on success uploads them only when nobody needs
+      # them.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-results
+          path: |
+            services/api/junit-api.xml
+            services/api/coverage-api.xml

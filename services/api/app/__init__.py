@@ -14,14 +14,13 @@ def create_app(overrides=None):
     # Imported inside the factory, not at module scope: api imports models,
     # models import config, and config imports back into the package -- a
     # top-level import chain closes that loop and raises on startup.
+    from app.ai import ai_bp
     from app.api import api_bp, register_error_handlers
     from app.cli import register_cli
     from app.logging_setup import configure_logging
     from app.metrics import configure_metrics
-    from app.tracing import configure_tracing
     from app.routes.health import health_bp
-    from app.ai import ai_bp
-    from app.api import api_bp, register_error_handlers
+    from app.tracing import configure_tracing
 
     configure_logging(app, 'api')
     # After logging, so anything metrics reports has somewhere to go.

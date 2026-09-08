@@ -12,10 +12,12 @@ own validator, and a cache that looked broken because gunicorn runs two
 workers.
 """
 import pytest
-
 from app.ai import provider
 from app.ai.provider import (
-    AiRejected, AiUnavailable, Completion, StubProvider, complete,
+    AiUnavailable,
+    Completion,
+    StubProvider,
+    complete,
 )
 
 
