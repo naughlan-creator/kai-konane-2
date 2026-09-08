@@ -213,7 +213,19 @@ jobs:
         run: helm template kai-konane $CHART > /tmp/render-default.yaml
 
       - name: render (production values)
-        run: helm template kai-konane $CHART -f $CHART/values-prod.yaml > /tmp/render-prod.yaml
+        # values-prod.yaml is deliberately incomplete -- two values are
+        # supplied at install time, and the `required` guards exist to stop a
+        # half-configured production release. The placeholders are obviously
+        # fake on purpose: .invalid is a reserved TLD (RFC 2606) that can never
+        # resolve, so nobody can mistake this output for something deployable.
+        # The step checks that the TEMPLATES render, not that this renders a
+        # working deployment.
+        run: |
+          helm template kai-konane $CHART \
+            -f $CHART/values-prod.yaml \
+            --set ingress.host=ci.invalid \
+            --set externalDatabase.host=db.ci.invalid \
+            > /tmp/render-prod.yaml
 
       # A NEGATIVE test. Every other step here asserts something works; this
       # asserts something FAILS. The ai.apiKey guard was added in #40 and
@@ -255,8 +267,8 @@ jobs:
 
       - name: promtool check rules
         run: |
-          docker run --rm -v /tmp:/w prom/prometheus:v2.54.1 \
-            promtool check rules /w/alerts.yml
+          docker run --rm --entrypoint=/bin/promtool -v /tmp:/w \
+            prom/prometheus:v2.54.1 check rules /w/alerts.yml
 
       # Schema validation for the raw manifests: catches a mistyped field or a
       # wrong apiVersion, which kubectl only reports when you apply.
