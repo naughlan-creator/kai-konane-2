@@ -364,8 +364,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Layer cache shared across runs, so an unchanged requirements.txt
           # does not recompile psycopg2 on every pull request.
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=min,scope=${{ matrix.name }}
 
       # Signed, verifiable provenance: which workflow, at which commit, built
       # this exact digest. `docker pull` cannot tell you that, and "the image
@@ -377,3 +377,4 @@ jobs:
           subject-name: ghcr.io/naughlan-creator/kai-konane-2/${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
