@@ -139,7 +139,7 @@ The admin password comes from `ADMIN_PASSWORD` in `.env`; leave it blank and
 
 ```bash
 pip install -r services/api/requirements-dev.txt
-cd services/api && python -m pytest      # 140 tests
+cd services/api && python -m pytest      # 159 tests
 cd services/web && python -m pytest      # 128 tests
 ```
 
@@ -172,6 +172,150 @@ split, so `test_api_content.py` and `test_api_domain.py` check payload shape,
 embed depth, and the invariants that matter: that a password hash never appears
 in a user payload under any key, that a rejected family registration writes
 nothing at all, and that timestamps carry an explicit UTC offset.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs nine jobs on every pull request, in about two
+and a half minutes.
+
+| job | what it proves |
+|---|---|
+| `ruff` | lint, at the version pinned in `requirements-dev.txt` |
+| `api tests (Postgres)` | 159 tests against a real Postgres service container |
+| `web tests` | 128 tests, api stubbed |
+| `terraform` | `fmt -check`, `init -backend=false`, `validate` |
+| `helm` | lint and render, default and production values, plus one **negative** test |
+| `manifests and alert rules` | `promtool check rules`, `kubeconform` |
+| `image (api/web/gateway)` | all three Dockerfiles still build |
+
+Six run in parallel; the three image builds are gated behind all six, because
+there is no point building an image for code that does not lint, does not pass,
+or renders a chart that will not apply.
+
+### There is a second CI system, and that is the point
+
+`azure-pipelines.yml` is kept, not dead. It is a complete three-stage pipeline —
+lint, tests on Postgres, tag-gated publish to GHCR — and it works. It has one
+structural problem:
+
+```yaml
+pool:
+  name: nolan-agent-pool
+```
+
+A self-hosted agent. It runs when that machine is on, and its results live in
+Azure DevOps rather than on the pull request. CI that requires a laptop to be
+powered up is a build script with a scheduler attached — and the cost was
+concrete: a test broken by the observability work went a full day unnoticed,
+because nothing ran on the PR that broke it.
+
+Linux runners also removed a category of workaround the Azure file still
+carries: a manual `docker run` for Postgres, a `for /l` polling loop, and a
+PowerShell step written because `script:` runs `cmd.exe`, which has no `sed`.
+All three exist only because the agent is Windows.
+
+### Validation the pipeline never had
+
+Terraform, Helm and the Prometheus rules used to be checked by running commands
+and remembering to. Three of these jobs check them on every PR instead.
+
+The **negative** test in the `helm` job is the one worth singling out:
+
+```yaml
+      - name: the ai.apiKey guard must fire
+        run: |
+          if helm template kai-konane $CHART \
+               --set ai.provider=azure \
+               --set ai.endpoint=https://example.openai.azure.com \
+               > /dev/null 2>&1; then
+            echo "::error::the required guard is gone"
+            exit 1
+          fi
+```
+
+Every other step asserts that something works. This one asserts that something
+**fails**. A `required` guard nobody has watched fire is a guess, and the two
+guards confirmed by hand during the AI work stay confirmed only if something
+keeps checking.
+
+`promtool check rules` is the other addition with teeth. The alert rules live
+inside a ConfigMap, so it lifts `alerts.yml` out of `.data` before checking it.
+YAML parsing proves nothing about PromQL — Prometheus decides that at load time,
+and when it rejects a rule file it logs the failure, **keeps the previously
+loaded rules**, and carries on serving. The UI looks healthy either way.
+
+### What it does not prove
+
+`terraform validate` checks syntax, types and references without talking to
+Azure. It would catch a reference to a resource that does not exist. It cannot
+catch what actually broke the first `terraform apply`: an alert rule whose
+query Azure rejected with a 400 at create time. That class of error needs a
+`plan` against a real subscription, which needs credentials in CI, which is an
+OIDC federation exercise this repository has not done. The green tick is
+honest about its own boundary.
+
+`deploy/k8s/01-secret.yaml` is gitignored, so CI validates eleven manifests
+where a deployment applies twelve.
+
+### The gate
+
+`.github/ruleset-main.json` is branch protection as a versioned file, applied
+with:
+
+```bash
+gh api --method PUT repos/naughlan-creator/kai-konane-2/rulesets/<id> \
+  --input .github/ruleset-main.json
+```
+
+Protection configured by clicking is a setting nobody can review, diff or
+restore. As a file it goes through the same pull request as the code it
+protects.
+
+It requires a pull request (with zero approvals — one contributor, so requiring
+an approval you would give yourself is theatre), all nine checks, and
+`strict_required_status_checks_policy: true`, which means a branch must be up to
+date with `main` before it merges. That last one is the friction-bearing choice
+and it is deliberate: green-on-my-branch is not green-after-merge, and the
+regression described above passed on its own branch and broke `main`.
+
+`bypass_actors` is empty. That includes the repository owner.
+
+### Two things that cost real time
+
+**1. The Actions cache scope defaults to the job name.** Matrix jobs are named
+after every matrix value, so the check `images (api, services/api)` would have
+broken the moment anyone renamed a build context. Fixing that with an explicit
+`name: image (${{ matrix.name }})` also, silently, moved the cache — the default
+scope had changed with the name.
+
+The fix is to key the cache on what it caches:
+
+```yaml
+cache-from: type=gha,scope=${{ matrix.name }}
+```
+
+Note also what the default did *before* the rename: all three matrix legs shared
+the job name `images`, so all three wrote to one cache scope concurrently,
+overwriting each other.
+
+**2. `mode=max` exports the builder stage too.** That is what it is for, and for
+most images it is right. The api image is 827MB of numpy, scipy, pandas and
+scikit-learn, and the export was measured at:
+
+```
+#22 exporting to GitHub Actions Cache
+#22 writing layer sha256:60f9ff3f... 784.6s done
+#22 DONE 913.0s
+```
+
+Fifteen minutes of cache export to save a **137-second** cold build. With a 10GB
+per-repository cache limit and three images, `mode=max` would also have evicted
+itself into permanent misses. `mode=min` brought the same step to 35.7s and the
+job from 15m51s to 1m37s.
+
+The general shape: a cache is only worth what it saves, and neither number is
+knowable without measuring. The comment in the workflow records the measurement,
+not just the conclusion.
 
 ## Layout
 
@@ -237,7 +381,7 @@ command, a YAML file, or `az containerapp show`.
 | ![Key Vault](docs/img/key-vault.png) | Secrets by name, never by value |
 | ![Managed identity](docs/img/managed-identity.png) | Key Vault Secrets User, read-only |
 | ![Pipeline](docs/img/pipeline-stages.png) | Lint → tests on Postgres → build → publish |
-| ![Tests](docs/img/pipeline-tests.png) | 268 tests, both suites |
+| ![Tests](docs/img/pipeline-tests.png) | 287 tests, both suites |
 | ![Uptime](docs/img/uptime.png) | UptimeRobot on the gateway's health endpoint |
 
 ### One request, traced across both services
