@@ -293,7 +293,7 @@ jobs:
             /w/deploy/k8s
 
   images:
-    name: images
+    name: image (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
