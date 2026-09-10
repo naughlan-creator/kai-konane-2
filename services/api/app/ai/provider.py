@@ -188,8 +188,8 @@ class AzureOpenAIProvider(Provider):
                     # The separation that matters: instructions are a SYSTEM
                     # message, user content is a USER message. Never
                     # concatenated. See prompts.py.
-                    {'role': 'system', 'context': system},
-                    {'role': 'user', 'context': user},
+                    {'role': 'system', 'content': system},
+                    {'role': 'user', 'content': user},
                 ],
                 'max_tokens': max_tokens,
                 'temperature': 0.8,
